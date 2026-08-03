@@ -1,2 +1,1 @@
-// Utility libraries and configuration
-export {};
+export * from './mockData';

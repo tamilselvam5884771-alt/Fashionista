@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Sparkles, Search, Heart, Wallet, Sun, Moon, LogIn } from 'lucide-react';
-import { useThemeStore } from '../../store';
+import { Sparkles, Search, Heart, Wallet, Sun, Moon, LogIn, LogOut } from 'lucide-react';
+import { useThemeStore, useAuthStore } from '../../store';
 import { Button, Avatar } from '../ui';
 
 export const Navbar: React.FC = () => {
   const { theme, toggleTheme } = useThemeStore();
+  const { user, isAuthenticated, logout } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
@@ -100,7 +101,7 @@ export const Navbar: React.FC = () => {
             )}
           </button>
 
-          {/* Profile / Login */}
+          {/* Profile / Login / Logout */}
           <div className="pl-1 border-l border-slate-200 dark:border-slate-800 flex items-center">
             {isAuthPage ? (
               <Link to="/">
@@ -108,12 +109,25 @@ export const Navbar: React.FC = () => {
                   Home
                 </Button>
               </Link>
+            ) : isAuthenticated && user ? (
+              <div className="flex items-center gap-2">
+                <Link to="/profile" className="flex items-center gap-2">
+                  <Avatar size="sm" name={user.name} status="online" />
+                  <span className="hidden xl:inline text-xs font-semibold text-slate-700 dark:text-slate-200 font-poppins">
+                    {user.name}
+                  </span>
+                </Link>
+                <button
+                  onClick={logout}
+                  className="p-2 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
             ) : (
               <div className="flex items-center gap-2">
-                <Link to="/profile">
-                  <Avatar size="sm" name="User Account" status="online" />
-                </Link>
-                <Link to="/login" className="hidden sm:inline-block">
+                <Link to="/login">
                   <Button size="sm" variant="primary" leftIcon={<LogIn className="w-3.5 h-3.5" />}>
                     Sign In
                   </Button>
