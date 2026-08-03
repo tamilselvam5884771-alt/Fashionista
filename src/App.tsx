@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ToastProvider } from './components/ui';
-import { MainLayout, BoutiqueLayout } from './components/layout';
+import { MainLayout, BoutiqueLayout, ProtectedRoute } from './components/layout';
+import { useAuthStore } from './store/useAuthStore';
 import {
   Home,
   Explore,
@@ -16,17 +18,61 @@ import {
 } from './pages';
 
 export function App() {
+  const initializeAuth = useAuthStore((state) => state.initializeAuth);
+
+  useEffect(() => {
+    initializeAuth();
+  }, [initializeAuth]);
+
   return (
     <ToastProvider>
       <BrowserRouter>
         <Routes>
           {/* Customer Application Layout Routes */}
           <Route element={<MainLayout />}>
-            <Route path="/" element={<Home />} />
-            <Route path="/explore" element={<Explore />} />
-            <Route path="/design" element={<Design />} />
-            <Route path="/wedding" element={<Wedding />} />
-            <Route path="/profile" element={<Profile />} />
+            {/* Protected Customer Routes */}
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <Home />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/explore"
+              element={
+                <ProtectedRoute>
+                  <Explore />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/design"
+              element={
+                <ProtectedRoute>
+                  <Design />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/wedding"
+              element={
+                <ProtectedRoute>
+                  <Wedding />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <Profile />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Public Routes */}
             <Route path="/wishlist" element={<Wishlist />} />
             <Route path="/wallet" element={<Wallet />} />
             <Route path="/login" element={<Login />} />

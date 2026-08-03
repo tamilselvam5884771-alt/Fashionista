@@ -1,43 +1,105 @@
 import { create } from 'zustand';
+import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabaseClient';
 import type { User } from '../types';
 
 interface AuthState {
   user: User | null;
+  supabaseUser: SupabaseUser | null;
+  session: Session | null;
   isAuthenticated: boolean;
-  login: (email: string, name?: string) => void;
-  logout: () => void;
+  isLoading: boolean;
+  initializeAuth: () => Promise<void>;
+  setUserFromSession: (session: Session | null) => Promise<void>;
+  logout: () => Promise<void>;
 }
 
-const getSavedUser = (): User | null => {
-  if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('fashionista-user-session');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error('Failed to parse saved user session', e);
-      }
+export const useAuthStore = create<AuthState>((set, get) => ({
+  user: null,
+  supabaseUser: null,
+  session: null,
+  isAuthenticated: false,
+  isLoading: true,
+
+  setUserFromSession: async (session: Session | null) => {
+    if (!session || !session.user) {
+      set({
+        user: null,
+        supabaseUser: null,
+        session: null,
+        isAuthenticated: false,
+        isLoading: false,
+      });
+      return;
     }
-  }
-  return null;
-};
 
-const initialUser = getSavedUser();
+    const sbUser = session.user;
+    let fullName = sbUser.user_metadata?.full_name || sbUser.email?.split('@')[0] || 'User';
+    let role = sbUser.user_metadata?.role || 'customer';
+    let avatarUrl = sbUser.user_metadata?.avatar_url;
 
-export const useAuthStore = create<AuthState>((set) => ({
-  user: initialUser,
-  isAuthenticated: !!initialUser,
-  login: (email: string, name?: string) => {
-    const newUser: User = {
-      id: Math.random().toString(36).substring(2, 9),
-      name: name || email.split('@')[0].replace('.', ' '),
-      email,
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', sbUser.id)
+        .maybeSingle();
+
+      if (profile) {
+        if (profile.full_name) fullName = profile.full_name;
+        if (profile.role) role = profile.role;
+        if (profile.avatar_url) avatarUrl = profile.avatar_url;
+      }
+    } catch (e) {
+      console.error('Error fetching user profile from database:', e);
+    }
+
+    const appUser: User = {
+      id: sbUser.id,
+      name: fullName,
+      email: sbUser.email || '',
+      role: role as any,
+      avatar_url: avatarUrl,
     };
-    localStorage.setItem('fashionista-user-session', JSON.stringify(newUser));
-    set({ user: newUser, isAuthenticated: true });
+
+    set({
+      user: appUser,
+      supabaseUser: sbUser,
+      session,
+      isAuthenticated: true,
+      isLoading: false,
+    });
   },
-  logout: () => {
-    localStorage.removeItem('fashionista-user-session');
-    set({ user: null, isAuthenticated: false });
+
+  initializeAuth: async () => {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      await get().setUserFromSession(session);
+
+      supabase.auth.onAuthStateChange(async (_event, session) => {
+        await get().setUserFromSession(session);
+      });
+    } catch (e) {
+      console.error('Failed to initialize Supabase Auth:', e);
+      set({ isLoading: false });
+    }
+  },
+
+  logout: async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.error('Error signing out of Supabase:', e);
+    } finally {
+      set({
+        user: null,
+        supabaseUser: null,
+        session: null,
+        isAuthenticated: false,
+        isLoading: false,
+      });
+    }
   },
 }));
