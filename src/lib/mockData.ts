@@ -68,6 +68,28 @@ export interface ExploreOutfit {
   isWishlisted?: boolean;
 }
 
+export interface WeddingPackageItem {
+  id: string;
+  title: string;
+  packageType: 'Bride' | 'Groom' | 'Bridesmaid' | 'Family';
+  designer: string;
+  price: number;
+  fabric: string;
+  image: string;
+  tag: string;
+  description: string;
+}
+
+export interface MoodboardPin {
+  id: string;
+  title: string;
+  category: string;
+  image: string;
+  heightClass: string;
+  likes: number;
+  isSaved?: boolean;
+}
+
 export const heroBanners: HeroBanner[] = [
   {
     id: 'b1',
@@ -368,5 +390,126 @@ export const exploreOutfits: ExploreOutfit[] = [
     fabric: 'Organza',
     location: 'Rome',
     image: 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?auto=format&fit=crop&w=800&q=80',
+  },
+];
+
+export const weddingPackages: WeddingPackageItem[] = [
+  {
+    id: 'wp-1',
+    title: 'Princess Cut Silk Gown & Cathedral Veil',
+    packageType: 'Bride',
+    designer: 'Maison de L’Amour',
+    price: 4200,
+    fabric: 'Mulberry Silk & Lace',
+    image: 'https://images.unsplash.com/photo-1594552072238-b8a33785b261?auto=format&fit=crop&w=800&q=80',
+    tag: 'Bridal Highlight',
+    description: 'Includes hand-stitched cathedral veil, pearl embroidery, and 3D fitting session.',
+  },
+  {
+    id: 'wp-2',
+    title: 'Rose Gold Floral Lehenga Set',
+    packageType: 'Bride',
+    designer: 'Saint-Germain Atelier',
+    price: 3850,
+    fabric: 'Organza & Crystal Thread',
+    image: 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=800&q=80',
+    tag: 'Popular',
+    description: 'Embellished dupatta with rose gold sequins and custom waist fitting.',
+  },
+  {
+    id: 'wp-3',
+    title: 'Royal Midnight Velvet Sherwani & Tux',
+    packageType: 'Groom',
+    designer: 'Saint-Germain',
+    price: 2850,
+    fabric: 'Royal Velvet & Silk',
+    image: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=800&q=80',
+    tag: 'Groom Luxury',
+    description: 'Tailored velvet bandhgala jacket with silk trousers and champagne pocket square.',
+  },
+  {
+    id: 'wp-4',
+    title: 'Champagne Gold Satin Suit',
+    packageType: 'Groom',
+    designer: 'Valenti Milan',
+    price: 2100,
+    fabric: 'Italian Satin Silk',
+    image: 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&w=800&q=80',
+    tag: 'Classic',
+    description: 'Peak lapel double-breasted suit crafted for wedding reception elegance.',
+  },
+  {
+    id: 'wp-5',
+    title: 'Lavender Tulle Bridesmaid Set',
+    packageType: 'Bridesmaid',
+    designer: 'Haute London',
+    price: 980,
+    fabric: 'French Tulle & Satin',
+    image: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=800&q=80',
+    tag: 'Matching Group',
+    description: 'Coordinated pastel lavender dresses with adjustable waist ribbons.',
+  },
+  {
+    id: 'wp-6',
+    title: 'Family Heirloom Silk Anarkali & Suit',
+    packageType: 'Family',
+    designer: 'Maison de L’Amour',
+    price: 1650,
+    fabric: 'Pure Brocade Silk',
+    image: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=800&q=80',
+    tag: 'Family Package',
+    description: 'Bespoke traditional attire set for parents and close family members.',
+  },
+];
+
+export const moodboardPins: MoodboardPin[] = [
+  {
+    id: 'pin-1',
+    title: 'Cathedral Silk Veil & Pearl Tiara',
+    category: 'Bridal Accessories',
+    image: 'https://images.unsplash.com/photo-1594552072238-b8a33785b261?auto=format&fit=crop&w=800&q=80',
+    heightClass: 'h-80',
+    likes: 342,
+    isSaved: true,
+  },
+  {
+    id: 'pin-2',
+    title: 'Rose Gold Floral Reception Entrance',
+    category: 'Venue Decor',
+    image: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=800&q=80',
+    heightClass: 'h-64',
+    likes: 512,
+  },
+  {
+    id: 'pin-3',
+    title: 'Champagne Silk Pleated Gown',
+    category: 'Gowns',
+    image: 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=800&q=80',
+    heightClass: 'h-96',
+    likes: 428,
+  },
+  {
+    id: 'pin-4',
+    title: 'Royal Velvet Groom Lapel Detail',
+    category: 'Groom Style',
+    image: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=800&q=80',
+    heightClass: 'h-72',
+    likes: 219,
+  },
+  {
+    id: 'pin-5',
+    title: 'French Lace Bridal Bouquet & Ring',
+    category: 'Details',
+    image: 'https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&w=800&q=80',
+    heightClass: 'h-64',
+    likes: 630,
+  },
+  {
+    id: 'pin-6',
+    title: 'Pastel Lavender Bridesmaid Palette',
+    category: 'Color Scheme',
+    image: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=800&q=80',
+    heightClass: 'h-80',
+    likes: 189,
   },
 ];
