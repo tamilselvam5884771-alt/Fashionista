@@ -424,15 +424,6 @@ export const Home: React.FC = () => {
                   <CardTitle className="text-base">{bt.name}</CardTitle>
                   <CardDescription>{bt.specialty}</CardDescription>
                 </div>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled
-                  className="w-full mt-2 opacity-60 cursor-not-allowed border-dashed bg-slate-50 dark:bg-slate-800/40 text-slate-400 dark:text-slate-500 font-medium"
-                >
-                  Book Fitting (Coming Soon)
-                </Button>
               </Card>
             ))}
           </div>
