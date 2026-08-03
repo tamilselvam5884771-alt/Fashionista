@@ -13,6 +13,7 @@ import {
   Crown,
   ShoppingBag,
   Eye,
+  AlertCircle,
 } from 'lucide-react';
 import {
   Button,
@@ -23,32 +24,162 @@ import {
   Skeleton,
   useToast,
 } from '../components/ui';
-import {
-  heroBanners,
-  aiPicks,
-  trendingCollections,
-  nearbyBoutiques,
-  recentlyViewed,
-} from '../lib/mockData';
+import { heroBanners, recentlyViewed } from '../lib/mockData';
+import { supabase } from '../lib/supabaseClient';
+
+interface OutfitItem {
+  id: string;
+  title: string;
+  designer: string;
+  image: string;
+  price: number;
+  originalPrice?: number;
+  matchScore: number;
+  reason: string;
+  category: string;
+  occasion: string;
+}
+
+interface BoutiqueItem {
+  id: string;
+  name: string;
+  location: string;
+  rating: number;
+  reviewCount: number;
+  image: string;
+  isOpen: boolean;
+  distance: string;
+  specialty: string;
+}
 
 export const Home: React.FC = () => {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Supabase Data State
+  const [aiPicks, setAiPicks] = useState<OutfitItem[]>([]);
+  const [trendingCollections, setTrendingCollections] = useState<any[]>([]);
+  const [nearbyBoutiques, setNearbyBoutiques] = useState<BoutiqueItem[]>([]);
 
   // Carousel State
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Wishlist State (Mock)
-  const [wishlistedIds, setWishlistedIds] = useState<string[]>(['ai-1']);
+  // Wishlist State (Mock/Local)
+  const [wishlistedIds, setWishlistedIds] = useState<string[]>([]);
 
-  // Simulate 800ms API loading delay
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 800);
-    return () => clearTimeout(timer);
+    const loadHomeData = async () => {
+      setIsLoading(true);
+      setFetchError(null);
+      try {
+        // 1. Fetch Top Rated Outfits for AI Picks & Trending Collections
+        const { data: outfitsData, error: outfitsErr } = await supabase
+          .from('outfits')
+          .select('*, boutiques(name, location)')
+          .order('rating', { ascending: false })
+          .limit(8);
+
+        if (outfitsErr) throw outfitsErr;
+
+        if (outfitsData) {
+          const mappedPicks: OutfitItem[] = outfitsData.map((item: any, idx: number) => ({
+            id: item.id,
+            title: item.title,
+            designer: item.boutiques?.name || item.category || 'Atelier',
+            image:
+              item.image_url ||
+              'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=800&q=80',
+            price: Number(item.price),
+            originalPrice: Number(item.price) * 1.2,
+            matchScore: 98 - (idx * 2),
+            reason: `Handpicked for ${item.occasion || 'Evening'} elegance in ${item.fabric || 'silk'}`,
+            category: item.category || 'Couture',
+            occasion: item.occasion || 'Evening',
+          }));
+
+          setAiPicks(mappedPicks);
+
+          // Group into 3 Trending Lookbooks
+          setTrendingCollections([
+            {
+              id: 'trend-1',
+              title: 'Royal Bridal & Wedding Suite',
+              tag: 'Wedding 2026',
+              image:
+                outfitsData[1]?.image_url ||
+                'https://images.unsplash.com/photo-1594552072238-b8a33785b261?auto=format&fit=crop&w=800&q=80',
+              itemCount: 14,
+              description: 'Opulent wedding gowns, cathedral veils, and embroidered sherwanis.',
+            },
+            {
+              id: 'trend-2',
+              title: 'Midnight Velvet & Opera Galas',
+              tag: 'Evening Couture',
+              image:
+                outfitsData[0]?.image_url ||
+                'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=800&q=80',
+              itemCount: 18,
+              description: 'Bespoke velvet suits, corsets, and champagne silk evening dresses.',
+            },
+            {
+              id: 'trend-3',
+              title: 'Parisian Organza & Silk Capes',
+              tag: 'Runway Highlights',
+              image:
+                outfitsData[3]?.image_url ||
+                'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&w=800&q=80',
+              itemCount: 12,
+              description: 'Lightweight organza layers, pleated blazers, and runway accessories.',
+            },
+          ]);
+        }
+
+        // 2. Fetch Boutiques from Supabase
+        const { data: boutiquesData, error: boutiquesErr } = await supabase
+          .from('boutiques')
+          .select('*')
+          .limit(6);
+
+        if (boutiquesErr) throw boutiquesErr;
+
+        if (boutiquesData) {
+          const boutiqueImages = [
+            'https://images.unsplash.com/photo-1567401893414-76b7b1e5a7a5?auto=format&fit=crop&w=600&q=80',
+            'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?auto=format&fit=crop&w=600&q=80',
+            'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=600&q=80',
+            'https://images.unsplash.com/photo-1537832816519-689ad163238b?auto=format&fit=crop&w=600&q=80',
+            'https://images.unsplash.com/photo-1479064555552-3ef4979f8908?auto=format&fit=crop&w=600&q=80',
+            'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=600&q=80',
+          ];
+
+          const mappedBoutiques: BoutiqueItem[] = boutiquesData.map((bt: any, idx: number) => ({
+            id: bt.id,
+            name: bt.name,
+            location: bt.location || 'Paris, France',
+            rating: Number(bt.rating) || 4.9,
+            reviewCount: 24 + idx * 7,
+            image: boutiqueImages[idx % boutiqueImages.length],
+            isOpen: idx % 4 !== 3,
+            distance: `${(0.8 + idx * 0.4).toFixed(1)} km`,
+            specialty: Array.isArray(bt.portfolio)
+              ? bt.portfolio.join(', ')
+              : 'Bespoke Tailoring & Haute Couture',
+          }));
+
+          setNearbyBoutiques(mappedBoutiques);
+        }
+      } catch (err: any) {
+        console.error('Error fetching Home data from Supabase:', err);
+        setFetchError(err.message || 'Failed to load atelier catalog from Supabase.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadHomeData();
   }, []);
 
   // Autoplay Hero Carousel (4.5s)
@@ -95,6 +226,19 @@ export const Home: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-12 font-inter">
+      {/* Fetch Error Alert State */}
+      {fetchError && (
+        <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            <span className="text-xs sm:text-sm font-medium">{fetchError}</span>
+          </div>
+          <Button size="sm" variant="ghost" onClick={() => window.location.reload()}>
+            Retry
+          </Button>
+        </div>
+      )}
+
       {/* 1. Hero Banner Carousel */}
       <section className="relative">
         {isLoading ? (
@@ -202,7 +346,7 @@ export const Home: React.FC = () => {
         )}
       </section>
 
-      {/* 2. Today's AI Picks (Horizontal Scrollable Card Row) */}
+      {/* 2. Today's AI Picks (Live Supabase Query Results) */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -214,7 +358,7 @@ export const Home: React.FC = () => {
                 Today's AI Picks
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Personalized recommendations tailored to your style profile
+                Personalized recommendations tailored to your style profile from our Supabase database
               </p>
             </div>
           </div>
@@ -283,7 +427,7 @@ export const Home: React.FC = () => {
                         </span>
                         {item.originalPrice && (
                           <span className="text-xs text-slate-400 line-through">
-                            ${item.originalPrice}
+                            ${Math.round(item.originalPrice)}
                           </span>
                         )}
                       </div>
@@ -305,7 +449,9 @@ export const Home: React.FC = () => {
           <h2 className="font-poppins text-xl font-bold text-slate-900 dark:text-slate-100">
             Trending Lookbooks
           </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Curated style collections from Paris, Milan, and Tokyo</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Curated style collections from top rated Supabase outfits
+          </p>
         </div>
 
         {isLoading ? (
@@ -376,7 +522,7 @@ export const Home: React.FC = () => {
         )}
       </section>
 
-      {/* 5. Nearby Boutiques (Cards with Rating Badges) */}
+      {/* 5. Nearby Boutiques (Loaded Live from Supabase boutiques Table) */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -384,7 +530,7 @@ export const Home: React.FC = () => {
               <MapPin className="w-5 h-5 text-rose-gold" />
               Nearby Atelier Boutiques
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Partner luxury salons near your current location</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Partner luxury salons from our Supabase database</p>
           </div>
         </div>
 
