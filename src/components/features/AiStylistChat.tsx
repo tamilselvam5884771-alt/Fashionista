@@ -4,6 +4,7 @@ import { Sparkles, X, Send } from 'lucide-react';
 import { Avatar } from '../ui';
 import { useAuthStore } from '../../store/useAuthStore';
 import { supabase } from '../../lib/supabaseClient';
+import { generateStylistResponse } from '../../lib/aiService';
 
 export interface ChatMessage {
   id: string;
@@ -121,26 +122,6 @@ export const AiStylistChat: React.FC = () => {
     }
   }, [messages, isThinking, isOpen]);
 
-  // Canned Keyword AI Response Logic
-  const generateAiReply = (prompt: string): string => {
-    const p = prompt.toLowerCase();
-
-    if (p.includes('wedding') || p.includes('bride') || p.includes('groom')) {
-      return 'For wedding celebrations, I recommend our Royal Velvet Sherwani or Silk Bridal Train with cathedral veils. Explore the Wedding Hub for custom packages!';
-    }
-    if (p.includes('under') || p.includes('budget') || p.includes('1000') || p.includes('5000')) {
-      return 'Looking for chic luxury within budget? Explore our Satin Pleated Cocktail Dress ($980), Champagne Clutch ($620), or Mulberry Silk Scarf ($340).';
-    }
-    if (p.includes('velvet') || p.includes('fabric')) {
-      return 'Royal Velvet pairs magnificently with Mulberry Silk scarves, crystal mesh clutches, and champagne gold heels. Try our Custom Studio fitting to test fabrics!';
-    }
-    if (p.includes('trend') || p.includes('summer') || p.includes('runway')) {
-      return 'Paris Fashion Week 2026 highlights include sheer organza capes, high-slit satin dresses, and royal purple lapel blazers!';
-    }
-
-    return 'I would love to help you find your dream look! Are you styling for an evening gala, a royal wedding, or custom atelier fitting?';
-  };
-
   const handleSendMessage = async (textToSend?: string) => {
     const messageText = textToSend || inputPrompt;
     if (!messageText.trim()) return;
@@ -148,7 +129,13 @@ export const AiStylistChat: React.FC = () => {
     const trimmed = messageText.trim();
     if (!textToSend) setInputPrompt('');
 
-    // Local optimistic message for guest or immediate display
+    // Prepare full conversation history for AI API request
+    const historyForAi = messages.map((m) => ({
+      role: m.sender === 'user' ? ('user' as const) : ('assistant' as const),
+      content: m.text,
+    }));
+
+    // Optimistic message for guest/display
     const tempUserId = Math.random().toString(36).substring(2, 9);
     const optimisticUserMsg: ChatMessage = {
       id: tempUserId,
@@ -169,25 +156,21 @@ export const AiStylistChat: React.FC = () => {
           content: trimmed,
         });
       } catch (err) {
-        console.error('Failed to persist user chat message to Supabase:', err);
+        console.error('Failed to persist user message to Supabase:', err);
       }
     }
 
-    // Simulate 1-second AI thinking delay
-    setTimeout(async () => {
-      const aiReplyText = generateAiReply(trimmed);
+    try {
+      // Call AI Service with full conversation history
+      const aiReplyText = await generateStylistResponse(historyForAi, trimmed);
 
       if (user) {
-        try {
-          // Insert AI assistant message to Supabase chat_messages
-          await supabase.from('chat_messages').insert({
-            user_id: user.id,
-            role: 'assistant',
-            content: aiReplyText,
-          });
-        } catch (err) {
-          console.error('Failed to persist AI response message to Supabase:', err);
-        }
+        // Insert AI assistant response to Supabase chat_messages (Realtime will broadcast)
+        await supabase.from('chat_messages').insert({
+          user_id: user.id,
+          role: 'assistant',
+          content: aiReplyText,
+        });
       } else {
         // Guest mode fallback
         const optimisticAiMsg: ChatMessage = {
@@ -198,9 +181,11 @@ export const AiStylistChat: React.FC = () => {
         };
         setMessages((prev) => [...prev, optimisticAiMsg]);
       }
-
+    } catch (err) {
+      console.error('Error generating AI response:', err);
+    } finally {
       setIsThinking(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -252,7 +237,7 @@ export const AiStylistChat: React.FC = () => {
                     <Sparkles className="w-3.5 h-3.5 text-champagne-gold" />
                   </h3>
                   <span className="text-[10px] text-slate-300 font-mono flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Supabase Realtime
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Powered by Claude AI
                   </span>
                 </div>
               </div>

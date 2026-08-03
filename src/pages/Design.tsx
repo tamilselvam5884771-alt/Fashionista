@@ -14,17 +14,24 @@ import {
   Palette,
   ArrowRight,
   ShieldCheck,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 import { Button, Card, CardTitle, CardDescription, Badge, Modal, useToast } from '../components/ui';
+import { analyzeOutfitImage, type OutfitAnalysisResult } from '../lib/aiService';
 
 export const Design: React.FC = () => {
   const { toast } = useToast();
 
   // Workflow State
-  const [step, setStep] = useState<'upload' | 'analyzing' | 'results'>('upload');
+  const [step, setStep] = useState<'upload' | 'analyzing' | 'results' | 'error'>('upload');
   const [isDragging, setIsDragging] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [analyzingStepText, setAnalyzingStepText] = useState('Scanning dress silhouette...');
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  // Dynamic AI Result State
+  const [aiResult, setAiResult] = useState<OutfitAnalysisResult | null>(null);
 
   // Interactive Customization State
   const [isLuxury, setIsLuxury] = useState(true);
@@ -73,28 +80,45 @@ export const Design: React.FC = () => {
     { name: 'Midnight Black', hex: '#0F172A', bgClass: 'bg-slate-900' },
   ];
 
-  // Start AI Analysis Process (~2 seconds)
-  const startAnalysis = (imageUrl: string) => {
+  // Start Real AI Analysis Process
+  const startAnalysis = async (imageUrl: string) => {
     setUploadedImage(imageUrl);
     setStep('analyzing');
+    setAnalysisError(null);
     setAnalyzingStepText('Scanning dress silhouette & neckline...');
 
-    setTimeout(() => {
-      setAnalyzingStepText('Extracting fabric texture & embroidery patterns...');
+    const timer1 = setTimeout(() => {
+      setAnalyzingStepText('Extracting fabric texture & embroidery patterns via Claude AI...');
     }, 700);
 
-    setTimeout(() => {
+    const timer2 = setTimeout(() => {
       setAnalyzingStepText('Matching boutique tailors & estimated pricing...');
     }, 1400);
 
-    setTimeout(() => {
+    try {
+      const result = await analyzeOutfitImage(imageUrl);
+
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+
+      setAiResult(result);
+      if (result.fabric) {
+        setSelectedFabric(result.fabric);
+      }
       setStep('results');
+
       toast({
         title: 'AI Analysis Complete',
-        description: '8 design attributes detected with 3 boutique matches.',
+        description: '8 design attributes detected with matched boutique estimates.',
         variant: 'success',
       });
-    }, 2000);
+    } catch (err: any) {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      console.error('AI Analysis failed:', err);
+      setAnalysisError(err?.message || 'Failed to analyze outfit image. Please try again.');
+      setStep('error');
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -127,12 +151,16 @@ export const Design: React.FC = () => {
 
   // Price Calculation
   const currentFabricObj = fabricSwatches.find((f) => f.name === selectedFabric);
-  const basePrice = isLuxury ? 2850 : 890;
+  const basePrice = isLuxury
+    ? aiResult?.luxuryPrice || 2850
+    : aiResult?.estimatedPrice || 890;
   const totalPrice = basePrice + (currentFabricObj?.priceDiff || 0);
 
   const resetWorkflow = () => {
     setStep('upload');
     setUploadedImage(null);
+    setAiResult(null);
+    setAnalysisError(null);
   };
 
   return (
@@ -152,7 +180,7 @@ export const Design: React.FC = () => {
           </p>
         </div>
 
-        {step === 'results' && (
+        {(step === 'results' || step === 'error') && (
           <Button variant="outline" size="sm" leftIcon={<RotateCcw className="w-4 h-4" />} onClick={resetWorkflow}>
             Upload Another Image
           </Button>
@@ -241,7 +269,7 @@ export const Design: React.FC = () => {
         </motion.div>
       )}
 
-      {/* STEP 2: AI Scanning Animation (~2s) */}
+      {/* STEP 2: AI Scanning Animation */}
       {step === 'analyzing' && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -273,6 +301,40 @@ export const Design: React.FC = () => {
                 </p>
               </div>
             </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* ERROR STEP: Friendly Retry State */}
+      {step === 'error' && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="p-8 rounded-3xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-center space-y-4 max-w-lg mx-auto"
+        >
+          <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-300 flex items-center justify-center mx-auto">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="font-poppins font-bold text-lg text-rose-900 dark:text-rose-100">
+              AI Analysis Error
+            </h3>
+            <p className="text-xs text-rose-700 dark:text-rose-300 font-inter">
+              {analysisError || 'Could not process the uploaded garment image.'}
+            </p>
+          </div>
+          <div className="flex items-center justify-center gap-3 pt-2">
+            <Button
+              variant="primary"
+              size="md"
+              leftIcon={<RefreshCw className="w-4 h-4" />}
+              onClick={() => uploadedImage && startAnalysis(uploadedImage)}
+            >
+              Retry AI Analysis
+            </Button>
+            <Button variant="outline" size="md" onClick={resetWorkflow}>
+              Upload Different Image
+            </Button>
           </div>
         </motion.div>
       )}
@@ -359,7 +421,9 @@ export const Design: React.FC = () => {
                   <div className="p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-sm text-center">
                     <Clock className="w-5 h-5 text-champagne-gold mx-auto mb-1" />
                     <span className="font-poppins font-bold text-xs block text-slate-800 dark:text-slate-200">
-                      {isLuxury ? '7–10 Days' : '12–14 Days'}
+                      {isLuxury
+                        ? `${aiResult?.deliveryDays || 7} Days`
+                        : `${(aiResult?.deliveryDays || 7) + 5} Days`}
                     </span>
                     <span className="text-[10px] text-slate-400">Delivery</span>
                   </div>
@@ -381,14 +445,14 @@ export const Design: React.FC = () => {
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
-                { label: 'Dress Type', value: 'Evening Velvet Gown' },
-                { label: 'Neck Style', value: 'Plunging V-Neck' },
-                { label: 'Sleeves', value: 'Sleeveless Tailored' },
-                { label: 'Embroidery', value: 'Hand-stitched Gold Thread' },
+                { label: 'Dress Type', value: aiResult?.dressType || 'Evening Velvet Gown' },
+                { label: 'Neck Style', value: aiResult?.neckStyle || 'Plunging V-Neck' },
+                { label: 'Sleeves', value: aiResult?.sleeves || 'Sleeveless Tailored' },
+                { label: 'Embroidery', value: aiResult?.embroidery || 'Hand-stitched Gold Thread' },
                 { label: 'Fabric Material', value: selectedFabric },
-                { label: 'Color Hue', value: selectedColor.name },
-                { label: 'Pattern', value: 'Solid Velvet Metallic' },
-                { label: 'Length', value: 'Floor-Length Train' },
+                { label: 'Color Hue', value: aiResult?.color || selectedColor.name },
+                { label: 'Pattern', value: aiResult?.pattern || 'Solid Velvet Metallic' },
+                { label: 'Length', value: aiResult?.length || 'Floor-Length Train' },
               ].map((attr, idx) => (
                 <div key={idx} className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 space-y-1 shadow-sm">
                   <span className="text-[10px] uppercase font-bold text-slate-400 font-poppins block">
@@ -568,6 +632,7 @@ export const Design: React.FC = () => {
               Fitting Details Summary:
             </span>
             <div className="text-xs space-y-1 text-slate-700 dark:text-slate-300">
+              <p>• <strong>Dress Type:</strong> {aiResult?.dressType || 'Evening Velvet Gown'}</p>
               <p>• <strong>Selected Fabric:</strong> {selectedFabric}</p>
               <p>• <strong>Selected Color:</strong> {selectedColor.name}</p>
               <p>• <strong>Estimated Total:</strong> ${totalPrice.toLocaleString()}</p>
