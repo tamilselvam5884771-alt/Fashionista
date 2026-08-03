@@ -15,7 +15,7 @@ export interface AIPickItem {
   designer: string;
   price: number;
   originalPrice?: number;
-  matchScore: number; // e.g. 98 -> 98%
+  matchScore: number;
   reason: string;
   image: string;
   category: string;
@@ -36,7 +36,7 @@ export interface NearbyBoutique {
   name: string;
   rating: number;
   reviewCount: number;
-  distance: string; // e.g. "1.2 km"
+  distance: string;
   address: string;
   image: string;
   isOpen: boolean;
@@ -50,6 +50,22 @@ export interface ProductItem {
   price: number;
   image: string;
   category: string;
+}
+
+export interface ExploreOutfit {
+  id: string;
+  title: string;
+  designer: string;
+  boutique: string;
+  price: number;
+  originalPrice?: number;
+  rating: number;
+  reviewCount: number;
+  occasion: 'Evening' | 'Wedding' | 'Cocktail' | 'Runway' | 'Casual Luxe';
+  fabric: 'Velvet' | 'Silk' | 'Lace' | 'Organza' | 'Satin';
+  location: 'Paris' | 'Milan' | 'Rome' | 'London';
+  image: string;
+  isWishlisted?: boolean;
 }
 
 export const heroBanners: HeroBanner[] = [
@@ -226,5 +242,131 @@ export const recentlyViewed: ProductItem[] = [
     price: 890,
     image: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=400&q=80',
     category: 'Suits',
+  },
+];
+
+export const exploreOutfits: ExploreOutfit[] = [
+  {
+    id: 'exp-1',
+    title: 'Royal Velvet Evening Gown',
+    designer: 'Saint-Germain',
+    boutique: 'Atelier Le Paris',
+    price: 2450,
+    originalPrice: 2890,
+    rating: 4.9,
+    reviewCount: 42,
+    occasion: 'Evening',
+    fabric: 'Velvet',
+    location: 'Paris',
+    image: 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=800&q=80',
+    isWishlisted: true,
+  },
+  {
+    id: 'exp-2',
+    title: 'Princess Cut Silk Bridal Train',
+    designer: 'Maison de L’Amour',
+    boutique: 'Maison de Couture',
+    price: 4200,
+    originalPrice: 4800,
+    rating: 5.0,
+    reviewCount: 68,
+    occasion: 'Wedding',
+    fabric: 'Silk',
+    location: 'Paris',
+    image: 'https://images.unsplash.com/photo-1594552072238-b8a33785b261?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'exp-3',
+    title: 'Champagne Silk Slip Dress',
+    designer: 'Valenti Milan',
+    boutique: 'Valenti Luxury Salon',
+    price: 1350,
+    rating: 4.8,
+    reviewCount: 29,
+    occasion: 'Cocktail',
+    fabric: 'Silk',
+    location: 'Milan',
+    image: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'exp-4',
+    title: 'French Lace Corset & Skirt',
+    designer: 'Saint-Germain',
+    boutique: 'Atelier Le Paris',
+    price: 1890,
+    originalPrice: 2150,
+    rating: 4.7,
+    reviewCount: 35,
+    occasion: 'Runway',
+    fabric: 'Lace',
+    location: 'Paris',
+    image: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'exp-5',
+    title: 'Silk Organza Layered Cape',
+    designer: 'Haute London',
+    boutique: 'Haute Flagship',
+    price: 1620,
+    rating: 4.9,
+    reviewCount: 19,
+    occasion: 'Runway',
+    fabric: 'Organza',
+    location: 'London',
+    image: 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'exp-6',
+    title: 'Satin Pleated Cocktail Dress',
+    designer: 'Valenti Milan',
+    boutique: 'Valenti Luxury Salon',
+    price: 980,
+    originalPrice: 1200,
+    rating: 4.6,
+    reviewCount: 51,
+    occasion: 'Cocktail',
+    fabric: 'Satin',
+    location: 'Rome',
+    image: 'https://images.unsplash.com/photo-1492707892479-7bc8d5a4ee93?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'exp-7',
+    title: 'Bespoke Double-Breasted Velvet Suit',
+    designer: 'Saint-Germain',
+    boutique: 'Atelier Le Paris',
+    price: 2780,
+    rating: 4.9,
+    reviewCount: 31,
+    occasion: 'Evening',
+    fabric: 'Velvet',
+    location: 'Paris',
+    image: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'exp-8',
+    title: 'Rose Gold Satin Evening Wrap',
+    designer: 'Maison de L’Amour',
+    boutique: 'Maison de Couture',
+    price: 1490,
+    rating: 4.8,
+    reviewCount: 22,
+    occasion: 'Casual Luxe',
+    fabric: 'Satin',
+    location: 'Milan',
+    image: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=800&q=80',
+  },
+  {
+    id: 'exp-9',
+    title: 'Embroidered Organza Wedding Dress',
+    designer: 'Maison de L’Amour',
+    boutique: 'Maison de Couture',
+    price: 3850,
+    originalPrice: 4200,
+    rating: 5.0,
+    reviewCount: 77,
+    occasion: 'Wedding',
+    fabric: 'Organza',
+    location: 'Rome',
+    image: 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?auto=format&fit=crop&w=800&q=80',
   },
 ];

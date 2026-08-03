@@ -1,2 +1,1 @@
-// Feature modules export directory
-export {};
+export * from './FilterSidebar';
