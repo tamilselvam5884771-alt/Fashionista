@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, X, Send } from 'lucide-react';
 import { Avatar } from '../ui';
+import { useAuthStore } from '../../store/useAuthStore';
+import { supabase } from '../../lib/supabaseClient';
 
 export interface ChatMessage {
   id: string;
@@ -11,20 +13,21 @@ export interface ChatMessage {
 }
 
 export const AiStylistChat: React.FC = () => {
+  const { user } = useAuthStore();
   const [isOpen, setIsOpen] = useState(false);
   const [inputPrompt, setInputPrompt] = useState('');
   const [isThinking, setIsThinking] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'm-1',
-      sender: 'ai',
-      text: 'Hello darling! I am your personal Fashionista AI Stylist. How can I help elevate your wardrobe today?',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    },
-  ]);
+  const defaultWelcomeMessage: ChatMessage = {
+    id: 'welcome-1',
+    sender: 'ai',
+    text: 'Hello darling! I am your personal Fashionista AI Stylist. How can I help elevate your wardrobe today?',
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+  };
+
+  const [messages, setMessages] = useState<ChatMessage[]>([defaultWelcomeMessage]);
 
   const quickReplies = [
     'Suggest wedding outfits',
@@ -36,6 +39,81 @@ export const AiStylistChat: React.FC = () => {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  // 1. Fetch Existing Chat History & Subscribe to Supabase Realtime when Drawer is Open
+  useEffect(() => {
+    if (!isOpen || !user) return;
+
+    let channel: any = null;
+
+    const fetchHistoryAndSubscribe = async () => {
+      try {
+        // Fetch existing database history for user
+        const { data: dbMessages, error } = await supabase
+          .from('chat_messages')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: true });
+
+        if (!error && dbMessages && dbMessages.length > 0) {
+          const loadedMsgs: ChatMessage[] = dbMessages.map((msg: any) => ({
+            id: msg.id,
+            sender: msg.role === 'user' ? 'user' : 'ai',
+            text: msg.content,
+            timestamp: new Date(msg.created_at).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+          }));
+          setMessages(loadedMsgs);
+        } else {
+          setMessages([defaultWelcomeMessage]);
+        }
+
+        // Subscribe to Postgres INSERT changes filtered by current user_id
+        channel = supabase
+          .channel(`chat_messages:${user.id}`)
+          .on(
+            'postgres_changes',
+            {
+              event: 'INSERT',
+              schema: 'public',
+              table: 'chat_messages',
+              filter: `user_id=eq.${user.id}`,
+            },
+            (payload) => {
+              const newRow = payload.new;
+              const newMsg: ChatMessage = {
+                id: newRow.id,
+                sender: newRow.role === 'user' ? 'user' : 'ai',
+                text: newRow.content,
+                timestamp: new Date(newRow.created_at || Date.now()).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+              };
+
+              setMessages((prev) => {
+                if (prev.some((m) => m.id === newMsg.id)) return prev;
+                return [...prev, newMsg];
+              });
+            }
+          )
+          .subscribe();
+      } catch (err) {
+        console.error('Error initializing Realtime chat:', err);
+      }
+    };
+
+    fetchHistoryAndSubscribe();
+
+    // Clean up channel subscription on drawer close or unmount
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [isOpen, user]);
 
   useEffect(() => {
     if (isOpen) {
@@ -63,31 +141,64 @@ export const AiStylistChat: React.FC = () => {
     return 'I would love to help you find your dream look! Are you styling for an evening gala, a royal wedding, or custom atelier fitting?';
   };
 
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string) => {
     const messageText = textToSend || inputPrompt;
     if (!messageText.trim()) return;
 
-    const userMsg: ChatMessage = {
-      id: Math.random().toString(36).substring(2, 9),
+    const trimmed = messageText.trim();
+    if (!textToSend) setInputPrompt('');
+
+    // Local optimistic message for guest or immediate display
+    const tempUserId = Math.random().toString(36).substring(2, 9);
+    const optimisticUserMsg: ChatMessage = {
+      id: tempUserId,
       sender: 'user',
-      text: messageText.trim(),
+      text: trimmed,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setMessages((prev) => [...prev, userMsg]);
-    if (!textToSend) setInputPrompt('');
+    setMessages((prev) => [...prev, optimisticUserMsg]);
     setIsThinking(true);
 
+    if (user) {
+      try {
+        // Insert user message to Supabase chat_messages
+        await supabase.from('chat_messages').insert({
+          user_id: user.id,
+          role: 'user',
+          content: trimmed,
+        });
+      } catch (err) {
+        console.error('Failed to persist user chat message to Supabase:', err);
+      }
+    }
+
     // Simulate 1-second AI thinking delay
-    setTimeout(() => {
-      const aiReplyText = generateAiReply(userMsg.text);
-      const aiMsg: ChatMessage = {
-        id: Math.random().toString(36).substring(2, 9),
-        sender: 'ai',
-        text: aiReplyText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prev) => [...prev, aiMsg]);
+    setTimeout(async () => {
+      const aiReplyText = generateAiReply(trimmed);
+
+      if (user) {
+        try {
+          // Insert AI assistant message to Supabase chat_messages
+          await supabase.from('chat_messages').insert({
+            user_id: user.id,
+            role: 'assistant',
+            content: aiReplyText,
+          });
+        } catch (err) {
+          console.error('Failed to persist AI response message to Supabase:', err);
+        }
+      } else {
+        // Guest mode fallback
+        const optimisticAiMsg: ChatMessage = {
+          id: Math.random().toString(36).substring(2, 9),
+          sender: 'ai',
+          text: aiReplyText,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages((prev) => [...prev, optimisticAiMsg]);
+      }
+
       setIsThinking(false);
     }, 1000);
   };
@@ -141,7 +252,7 @@ export const AiStylistChat: React.FC = () => {
                     <Sparkles className="w-3.5 h-3.5 text-champagne-gold" />
                   </h3>
                   <span className="text-[10px] text-slate-300 font-mono flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Active Now
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Supabase Realtime
                   </span>
                 </div>
               </div>
