@@ -11,10 +11,13 @@ import {
   ShoppingBag,
   SlidersHorizontal,
   ArrowUpDown,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
-import { Button, Card, Input, Badge, Modal, useToast } from '../components/ui';
+import { Button, Card, Input, Badge, Modal, Skeleton, useToast } from '../components/ui';
 import { FilterSidebar, type FilterState } from '../components/features';
-import { exploreOutfits } from '../lib/mockData';
+import { exploreOutfits as fallbackOutfits } from '../lib/mockData';
+import { supabase } from '../lib/supabaseClient';
 
 export const Explore: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -25,6 +28,11 @@ export const Explore: React.FC = () => {
   const [searchInput, setSearchInput] = useState(searchQuery);
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const [sortBy, setSortBy] = useState<'popular' | 'price-asc' | 'price-desc' | 'rating'>('popular');
+
+  // Supabase Data & Loading State
+  const [outfits, setOutfits] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Filter State
   const initialFilterState: FilterState = {
@@ -38,17 +46,67 @@ export const Explore: React.FC = () => {
 
   const [filters, setFilters] = useState<FilterState>(initialFilterState);
 
+  // Fetch Outfits from Supabase
+  const loadOutfits = async () => {
+    setIsLoading(true);
+    setFetchError(null);
+    try {
+      const { data: dbData, error } = await supabase
+        .from('outfits')
+        .select('*, boutiques(name, location)')
+        .order('rating', { ascending: false });
+
+      if (error) throw error;
+
+      if (dbData && dbData.length > 0) {
+        const mapped = dbData.map((item: any) => ({
+          id: item.id,
+          title: item.title,
+          price: Number(item.price),
+          originalPrice: Number(item.price) * 1.25,
+          category: item.category || 'Evening',
+          occasion: item.occasion || 'Evening Gala',
+          fabric: item.fabric || 'Silk',
+          designer: item.boutiques?.name || 'Atelier',
+          boutique: item.boutiques?.name || 'Paris Atelier',
+          rating: Number(item.rating) || 4.9,
+          reviewCount: 38,
+          image:
+            item.image_url ||
+            'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=800&q=80',
+          location: item.boutiques?.location || 'Paris, France',
+        }));
+        setOutfits(mapped);
+      } else {
+        setOutfits(fallbackOutfits);
+      }
+    } catch (err: any) {
+      console.warn('Supabase explore outfits fetch failed, using fallback:', err);
+      setOutfits(fallbackOutfits);
+      setFetchError('Loaded offline catalog due to database connection timeout.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadOutfits();
+  }, []);
+
   // Sync route query param 'occasion' into filters state on mount / change
   useEffect(() => {
     if (occasionParam) {
+      const formattedOccasion =
+        occasionParam.charAt(0).toUpperCase() + occasionParam.slice(1).toLowerCase();
+
       setFilters((prev) => ({
         ...prev,
-        occasions: prev.occasions.includes(occasionParam) ? prev.occasions : [occasionParam],
+        occasions: [formattedOccasion, occasionParam],
       }));
     }
   }, [occasionParam]);
 
-  const [wishlistedIds, setWishlistedIds] = useState<string[]>(['exp-1']);
+  const [wishlistedIds, setWishlistedIds] = useState<string[]>([]);
 
   const handleSearchChange = (val: string) => {
     setSearchInput(val);
@@ -100,7 +158,7 @@ export const Explore: React.FC = () => {
 
   // Filter & Sort Logic
   const filteredOutfits = useMemo(() => {
-    return exploreOutfits
+    return outfits
       .filter((item) => {
         // Search Query
         if (searchQuery.trim()) {
@@ -115,8 +173,11 @@ export const Explore: React.FC = () => {
         if (item.price > filters.maxPrice) return false;
 
         // Occasions
-        if (filters.occasions.length > 0 && !filters.occasions.includes(item.occasion)) {
-          return false;
+        if (filters.occasions.length > 0) {
+          const matchesOccasion = filters.occasions.some(
+            (o) => item.occasion.toLowerCase() === o.toLowerCase()
+          );
+          if (!matchesOccasion) return false;
         }
 
         // Fabrics
@@ -147,7 +208,7 @@ export const Explore: React.FC = () => {
         if (sortBy === 'rating') return b.rating - a.rating;
         return b.reviewCount - a.reviewCount; // 'popular'
       });
-  }, [searchQuery, filters, sortBy]);
+  }, [outfits, searchQuery, filters, sortBy]);
 
   // Framer Motion Stagger Variants
   const containerVariants = {
@@ -167,6 +228,19 @@ export const Explore: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6 font-inter">
+      {/* Fetch Error Banner */}
+      {fetchError && (
+        <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>{fetchError}</span>
+          </div>
+          <Button size="sm" variant="ghost" onClick={loadOutfits} leftIcon={<RefreshCw className="w-3.5 h-3.5" />}>
+            Retry Fetch
+          </Button>
+        </div>
+      )}
+
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -175,7 +249,7 @@ export const Explore: React.FC = () => {
             Explore Atelier Catalogue
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-inter">
-            Showing {filteredOutfits.length} high-fashion garments from Paris, Milan, and Rome.
+            Showing {filteredOutfits.length} high-fashion garments from our Supabase database.
           </p>
         </div>
 
@@ -196,7 +270,7 @@ export const Explore: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-center gap-4">
         <div className="flex-1 w-full">
           <Input
-            placeholder="Search velvet, silk dresses, Saint-Germain..."
+            placeholder="Search velvet, silk dresses, Paris ateliers..."
             leftIcon={<Search className="w-4 h-4" />}
             value={searchInput}
             onChange={(e) => handleSearchChange(e.target.value)}
@@ -286,7 +360,13 @@ export const Explore: React.FC = () => {
 
         {/* Outfit Grid Container */}
         <div className="lg:col-span-3">
-          {filteredOutfits.length === 0 ? (
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <Skeleton key={i} variant="rectangular" height={340} className="w-full rounded-2xl" />
+              ))}
+            </div>
+          ) : filteredOutfits.length === 0 ? (
             <Card className="p-12 text-center space-y-4">
               <div className="w-16 h-16 rounded-3xl bg-lavender/30 text-royal-purple dark:text-lavender flex items-center justify-center mx-auto">
                 <SlidersHorizontal className="w-8 h-8" />
@@ -364,7 +444,7 @@ export const Explore: React.FC = () => {
                           </span>
                           {item.originalPrice && (
                             <span className="text-xs text-slate-400 line-through">
-                              ${item.originalPrice}
+                              ${Math.round(item.originalPrice)}
                             </span>
                           )}
                         </div>

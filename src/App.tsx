@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ToastProvider } from './components/ui';
 import { MainLayout, BoutiqueLayout, ProtectedRoute } from './components/layout';
+import { ScrollToTop } from './components/common/ScrollToTop';
 import { useAuthStore } from './store/useAuthStore';
 import {
   Home,
@@ -27,6 +28,7 @@ export function App() {
   return (
     <ToastProvider>
       <BrowserRouter>
+        <ScrollToTop />
         <Routes>
           {/* Customer Application Layout Routes */}
           <Route element={<MainLayout />}>
