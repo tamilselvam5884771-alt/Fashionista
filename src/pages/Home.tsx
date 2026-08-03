@@ -367,7 +367,7 @@ export const Home: React.FC = () => {
                 Schedule a 1-on-1 private consultation with our master bridal tailors for bespoke wedding gowns.
               </p>
             </div>
-            <Link to="/wedding" className="shrink-0">
+            <Link to="/explore?occasion=Wedding" className="shrink-0">
               <Button variant="gold" size="lg" rightIcon={<ArrowRight className="w-4 h-4" />}>
                 Explore Bridal Suite
               </Button>
@@ -425,8 +425,13 @@ export const Home: React.FC = () => {
                   <CardDescription>{bt.specialty}</CardDescription>
                 </div>
 
-                <Button variant="outline" size="sm" className="w-full mt-2">
-                  Book Fitting Appointment
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled
+                  className="w-full mt-2 opacity-60 cursor-not-allowed border-dashed bg-slate-50 dark:bg-slate-800/40 text-slate-400 dark:text-slate-500 font-medium"
+                >
+                  Book Fitting (Coming Soon)
                 </Button>
               </Card>
             ))}

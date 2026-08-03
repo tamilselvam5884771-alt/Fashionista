@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -21,6 +21,7 @@ export const Explore: React.FC = () => {
   const { toast } = useToast();
 
   const searchQuery = searchParams.get('q') || '';
+  const occasionParam = searchParams.get('occasion');
   const [searchInput, setSearchInput] = useState(searchQuery);
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   const [sortBy, setSortBy] = useState<'popular' | 'price-asc' | 'price-desc' | 'rating'>('popular');
@@ -36,6 +37,17 @@ export const Explore: React.FC = () => {
   };
 
   const [filters, setFilters] = useState<FilterState>(initialFilterState);
+
+  // Sync route query param 'occasion' into filters state on mount / change
+  useEffect(() => {
+    if (occasionParam) {
+      setFilters((prev) => ({
+        ...prev,
+        occasions: prev.occasions.includes(occasionParam) ? prev.occasions : [occasionParam],
+      }));
+    }
+  }, [occasionParam]);
+
   const [wishlistedIds, setWishlistedIds] = useState<string[]>(['exp-1']);
 
   const handleSearchChange = (val: string) => {

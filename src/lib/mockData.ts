@@ -134,7 +134,7 @@ export const heroBanners: HeroBanner[] = [
     subtitle: 'Princess cut trains, silk veils, and tailored groom tuxedos for your royal wedding day.',
     image: 'https://images.unsplash.com/photo-1594552072238-b8a33785b261?auto=format&fit=crop&w=1600&q=80',
     ctaText: 'Discover Bridal',
-    ctaLink: '/wedding',
+    ctaLink: '/explore?occasion=Wedding',
     colorScheme: 'gold',
   },
   {
