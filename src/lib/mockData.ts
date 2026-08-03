@@ -90,6 +90,32 @@ export interface MoodboardPin {
   isSaved?: boolean;
 }
 
+export interface RevenueDataPoint {
+  month: string;
+  revenue: number;
+  consultations: number;
+}
+
+export interface DashboardOrder {
+  id: string;
+  customerName: string;
+  customerAvatar?: string;
+  garmentTitle: string;
+  amount: number;
+  date: string;
+  status: 'Completed' | 'In Fitting' | 'Pending' | 'Shipped';
+}
+
+export interface DashboardInventoryItem {
+  id: string;
+  sku: string;
+  name: string;
+  category: string;
+  price: number;
+  stock: number;
+  status: 'In Stock' | 'Low Stock' | 'Out of Stock';
+}
+
 export const heroBanners: HeroBanner[] = [
   {
     id: 'b1',
@@ -511,5 +537,106 @@ export const moodboardPins: MoodboardPin[] = [
     image: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=800&q=80',
     heightClass: 'h-80',
     likes: 189,
+  },
+];
+
+export const revenueChartData: RevenueDataPoint[] = [
+  { month: 'Jan', revenue: 14200, consultations: 12 },
+  { month: 'Feb', revenue: 18500, consultations: 14 },
+  { month: 'Mar', revenue: 24100, consultations: 18 },
+  { month: 'Apr', revenue: 21800, consultations: 16 },
+  { month: 'May', revenue: 32400, consultations: 22 },
+  { month: 'Jun', revenue: 38900, consultations: 25 },
+  { month: 'Jul', revenue: 48250, consultations: 31 },
+];
+
+export const dashboardOrders: DashboardOrder[] = [
+  {
+    id: 'ORD-9421',
+    customerName: 'Victoria Sterling',
+    garmentTitle: 'Princess Cut Silk Bridal Train',
+    amount: 4200,
+    date: 'Aug 02, 2026',
+    status: 'In Fitting',
+  },
+  {
+    id: 'ORD-9420',
+    customerName: 'Sophia Laurent',
+    garmentTitle: 'Royal Midnight Velvet Blazer',
+    amount: 1420,
+    date: 'Aug 01, 2026',
+    status: 'Completed',
+  },
+  {
+    id: 'ORD-9419',
+    customerName: 'Elena Rostova',
+    garmentTitle: 'Champagne Pleated Silk Gown',
+    amount: 2100,
+    date: 'Jul 30, 2026',
+    status: 'Shipped',
+  },
+  {
+    id: 'ORD-9418',
+    customerName: 'Marcus Vance',
+    garmentTitle: 'Royal Midnight Velvet Tuxedo',
+    amount: 2850,
+    date: 'Jul 28, 2026',
+    status: 'Pending',
+  },
+  {
+    id: 'ORD-9417',
+    customerName: 'Isabella Rossi',
+    garmentTitle: 'Rose Gold Crystal Mesh Clutch',
+    amount: 680,
+    date: 'Jul 27, 2026',
+    status: 'Completed',
+  },
+];
+
+export const dashboardInventory: DashboardInventoryItem[] = [
+  {
+    id: 'inv-1',
+    sku: 'FASH-VLV-01',
+    name: 'Royal Midnight Velvet Blazer',
+    category: 'Outerwear',
+    price: 1420,
+    stock: 14,
+    status: 'In Stock',
+  },
+  {
+    id: 'inv-2',
+    sku: 'FASH-SLK-02',
+    name: 'Champagne Pleated Silk Gown',
+    category: 'Gowns',
+    price: 2100,
+    stock: 3,
+    status: 'Low Stock',
+  },
+  {
+    id: 'inv-3',
+    sku: 'FASH-ACC-03',
+    name: 'Rose Gold Crystal Mesh Clutch',
+    category: 'Accessories',
+    price: 680,
+    stock: 28,
+    status: 'In Stock',
+  },
+  {
+    id: 'inv-4',
+    sku: 'FASH-BRD-04',
+    name: 'Princess Cut Silk Bridal Train',
+    category: 'Bridal Suite',
+    price: 4200,
+    stock: 2,
+    status: 'Low Stock',
+  },
+  {
+    id: 'inv-5',
+    sku: 'FASH-TUX-05',
+    name: 'Bespoke Double-Breasted Velvet Suit',
+    category: 'Menswear',
+    price: 2780,
+    stock: 9,
+    status: 'In Stock',
   },
 ];
