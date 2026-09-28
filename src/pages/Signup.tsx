@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Sparkles, User, Mail, Lock, Eye, EyeOff, UserPlus, CheckCircle2 } from 'lucide-react';
+import { Sparkles, User, Mail, Lock, Eye, EyeOff, UserPlus, CheckCircle2, Zap } from 'lucide-react';
 import { Button, Input, useToast } from '../components/ui';
-import { supabase } from '../lib/supabaseClient';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import { useAuthStore } from '../store/useAuthStore';
 
 export const Signup: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { loginAsDemo } = useAuthStore();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -72,6 +74,18 @@ export const Signup: React.FC = () => {
     }
 
     setIsSubmitting(true);
+    if (!isSupabaseConfigured) {
+      loginAsDemo(name, email);
+      toast({
+        title: 'Welcome to Fashionista Atelier',
+        description: 'Account created successfully (Demo Mode).',
+        variant: 'success',
+      });
+      navigate('/');
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -85,6 +99,21 @@ export const Signup: React.FC = () => {
       });
 
       if (error) {
+        if (
+          error.message.includes('Fetch') ||
+          error.message.includes('Network') ||
+          error.message.includes('Failed to fetch')
+        ) {
+          loginAsDemo(name, email);
+          toast({
+            title: 'Account Created (Demo Mode)',
+            description: 'Backend unreachable. Logged in with demo profile.',
+            variant: 'info',
+          });
+          navigate('/');
+          return;
+        }
+
         toast({
           title: 'Registration Failed',
           description: error.message,
@@ -116,11 +145,13 @@ export const Signup: React.FC = () => {
       });
       navigate('/');
     } catch (err: any) {
+      loginAsDemo(name, email);
       toast({
-        title: 'Registration Error',
-        description: err?.message || 'An unexpected error occurred.',
-        variant: 'error',
+        title: 'Account Created (Demo Mode)',
+        description: 'Backend unavailable. Logged in in demo mode.',
+        variant: 'info',
       });
+      navigate('/');
     } finally {
       setIsSubmitting(false);
     }
@@ -295,6 +326,34 @@ export const Signup: React.FC = () => {
               leftIcon={<UserPlus className="w-4 h-4" />}
             >
               Create Account
+            </Button>
+
+            <div className="relative my-4 flex items-center justify-center">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-200 dark:border-slate-800" />
+              </div>
+              <span className="relative bg-white dark:bg-slate-950 px-3 text-[11px] font-medium uppercase tracking-wider text-slate-400">
+                Or Instant Access
+              </span>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="w-full border-royal-purple/40 text-royal-purple dark:text-lavender hover:bg-royal-purple/10 transition-colors"
+              leftIcon={<Zap className="w-4 h-4 text-champagne-gold fill-champagne-gold" />}
+              onClick={() => {
+                loginAsDemo(name || 'Sophia Laurent', email || 'sophia@fashionista-atelier.com');
+                toast({
+                  title: 'Welcome, VIP Guest!',
+                  description: 'Logged in using Instant Demo Access.',
+                  variant: 'success',
+                });
+                navigate('/');
+              }}
+            >
+              ⚡ Quick Demo Register
             </Button>
           </form>
 

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { supabase } from '../lib/supabaseClient';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 
 export interface WishlistItem {
   id: string;
@@ -53,7 +53,7 @@ export const useWishlistStore = create<WishlistStore>((set, get) => ({
   isLoading: false,
 
   fetchWishlist: async (userId) => {
-    if (!userId) return;
+    if (!userId || !isSupabaseConfigured) return;
     set({ isLoading: true });
     try {
       const { data, error } = await supabase
@@ -97,7 +97,7 @@ export const useWishlistStore = create<WishlistStore>((set, get) => ({
 
     set({ wishlist: [newWishlistItem, ...wishlist] });
 
-    if (userId) {
+    if (userId && isSupabaseConfigured) {
       try {
         const { data } = await supabase
           .from('wishlists')
@@ -124,7 +124,7 @@ export const useWishlistStore = create<WishlistStore>((set, get) => ({
       wishlist: state.wishlist.filter((item) => item.id !== id),
     }));
 
-    if (userId && !id.startsWith('wish-demo')) {
+    if (userId && isSupabaseConfigured && !id.startsWith('wish-demo')) {
       try {
         await supabase.from('wishlists').delete().eq('id', id);
       } catch (err) {
@@ -135,7 +135,7 @@ export const useWishlistStore = create<WishlistStore>((set, get) => ({
 
   clearWishlist: async (userId) => {
     set({ wishlist: [] });
-    if (userId) {
+    if (userId && isSupabaseConfigured) {
       try {
         await supabase.from('wishlists').delete().eq('user_id', userId);
       } catch (err) {

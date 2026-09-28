@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { supabase } from '../lib/supabaseClient';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 
 export interface CartItem {
   id: string;
@@ -42,7 +42,7 @@ export const useCartStore = create<CartStore>((set, get) => ({
   setIsOpen: (isOpen) => set({ isOpen }),
 
   fetchCart: async (userId) => {
-    if (!userId) return;
+    if (!userId || !isSupabaseConfigured) return;
     set({ isLoading: true });
     try {
       const { data, error } = await supabase
@@ -94,7 +94,7 @@ export const useCartStore = create<CartStore>((set, get) => ({
 
       set({ cartItems: [newCartItem, ...cartItems] });
 
-      if (userId) {
+      if (userId && isSupabaseConfigured) {
         try {
           const { data } = await supabase
             .from('cart_items')
@@ -131,7 +131,7 @@ export const useCartStore = create<CartStore>((set, get) => ({
       cartItems: state.cartItems.map((item) => (item.id === id ? { ...item, quantity } : item)),
     }));
 
-    if (userId && !id.startsWith('cart-demo')) {
+    if (userId && isSupabaseConfigured && !id.startsWith('cart-demo')) {
       try {
         await supabase.from('cart_items').update({ quantity }).eq('id', id);
       } catch (err) {
@@ -145,7 +145,7 @@ export const useCartStore = create<CartStore>((set, get) => ({
       cartItems: state.cartItems.filter((item) => item.id !== id),
     }));
 
-    if (userId && !id.startsWith('cart-demo')) {
+    if (userId && isSupabaseConfigured && !id.startsWith('cart-demo')) {
       try {
         await supabase.from('cart_items').delete().eq('id', id);
       } catch (err) {
@@ -156,7 +156,7 @@ export const useCartStore = create<CartStore>((set, get) => ({
 
   clearCart: async (userId) => {
     set({ cartItems: [] });
-    if (userId) {
+    if (userId && isSupabaseConfigured) {
       try {
         await supabase.from('cart_items').delete().eq('user_id', userId);
       } catch (err) {
