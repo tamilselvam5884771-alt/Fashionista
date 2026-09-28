@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles,
   Upload,
@@ -12,16 +12,151 @@ import {
   Scissors,
   Layers,
   Palette,
-  ArrowRight,
   ShieldCheck,
   AlertCircle,
   RefreshCw,
+  Video,
+  Sliders,
+  Coins,
+  TrendingDown,
+  Check,
+  Zap,
 } from 'lucide-react';
-import { Button, Card, CardTitle, CardDescription, Badge, Modal, useToast } from '../components/ui';
+import { Button, Card, CardTitle, CardDescription, Badge, useToast } from '../components/ui';
+import { ConsultationBookingModal } from '../components/features';
 import { analyzeOutfitImage, type OutfitAnalysisResult } from '../lib/aiService';
+import { useAuthStore } from '../store/useAuthStore';
+import { supabase } from '../lib/supabaseClient';
+
+// --- Smooth Animated Number Counter Component ---
+const AnimatedNumber: React.FC<{ value: number; prefix?: string }> = ({ value, prefix = '₹' }) => {
+  const [displayValue, setDisplayValue] = useState(value);
+
+  useEffect(() => {
+    let animationFrameId: number;
+    const startValue = displayValue;
+    const endValue = value;
+    const duration = 350; // ms
+    const startTime = performance.now();
+
+    const updateNumber = (currentTime: number) => {
+      const elapsedTime = currentTime - startTime;
+      if (elapsedTime >= duration) {
+        setDisplayValue(endValue);
+      } else {
+        const progress = elapsedTime / duration;
+        const easeProgress = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+        const current = Math.round(startValue + (endValue - startValue) * easeProgress);
+        setDisplayValue(current);
+        animationFrameId = requestAnimationFrame(updateNumber);
+      }
+    };
+
+    animationFrameId = requestAnimationFrame(updateNumber);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [value]);
+
+  return <span>{prefix}{displayValue.toLocaleString()}</span>;
+};
+
+// --- Budget Circular Fabric Swatches Data ---
+export interface BudgetFabricSwatch {
+  id: string;
+  name: string;
+  subLabel: string;
+  colorGradient: string;
+  priceDiff: number; // in INR
+  tierTag: string;
+  description: string;
+}
+
+const BUDGET_FABRIC_SWATCHES: BudgetFabricSwatch[] = [
+  {
+    id: 'cotton',
+    name: 'Cotton Blend',
+    subLabel: 'Lightweight & Matte',
+    colorGradient: 'from-amber-200 via-amber-400 to-yellow-500 border-amber-300 text-amber-950',
+    priceDiff: -3200,
+    tierTag: 'Budget Choice',
+    description: 'Soft daily-wear feel with machine detailing.',
+  },
+  {
+    id: 'georgette',
+    name: 'Poly Georgette',
+    subLabel: 'Fluid & Graceful',
+    colorGradient: 'from-purple-300 via-pink-400 to-rose-400 border-purple-300 text-purple-950',
+    priceDiff: -1500,
+    tierTag: 'Smart Value',
+    description: 'Breezy sheer drape ideal for party wear.',
+  },
+  {
+    id: 'raw_silk',
+    name: 'Raw Velvet / Silk',
+    subLabel: 'Signature Runway',
+    colorGradient: 'from-indigo-600 via-purple-700 to-purple-900 border-indigo-400 text-white',
+    priceDiff: 0,
+    tierTag: 'Original Fit',
+    description: 'Lustrous plush finish with heavy structure.',
+  },
+  {
+    id: 'banarasi',
+    name: 'Pure Banarasi Silk',
+    subLabel: 'Handloom Royal',
+    colorGradient: 'from-amber-400 via-rose-500 to-purple-950 border-amber-300 text-white',
+    priceDiff: 6500,
+    tierTag: 'Royal Heritage',
+    description: 'Intricate metallic Zari weaving by master weavers.',
+  },
+];
+
+// --- Budget Tier Matcher Logic ---
+const getBudgetTierDetails = (price: number) => {
+  if (price < 5000) {
+    return {
+      tierName: 'Budget Alternative',
+      badgeVariant: 'grey' as const,
+      recommendedFabric: 'Cotton-Blend / Poly Satin',
+      recommendedEmbroidery: 'Machine Stitching & Printed Accents',
+      stitchingType: 'Standard Tailoring & Single Lining',
+      deliveryDays: '5-7 Days',
+      savingTip: 'Ideal for casual events & everyday elegance',
+    };
+  } else if (price < 15000) {
+    return {
+      tierName: 'Smart Atelier Fit',
+      badgeVariant: 'lavender' as const,
+      recommendedFabric: 'Georgette / Chiffon / Art Silk',
+      recommendedEmbroidery: 'Thread Zari & Sequence Highlights',
+      stitchingType: 'Custom Fitted Lining & Reinforced Seams',
+      deliveryDays: '7-10 Days',
+      savingTip: 'Perfect balance of luxury look and value',
+    };
+  } else if (price < 30000) {
+    return {
+      tierName: 'Bespoke Couture',
+      badgeVariant: 'gold' as const,
+      recommendedFabric: 'Raw Silk / Pure Organza / Velvet',
+      recommendedEmbroidery: 'Hand-Stitched Zardozi & Threadwork',
+      stitchingType: 'Bespoke 3D Fitting & Padded Structure',
+      deliveryDays: '10-14 Days',
+      savingTip: 'High fashion runway quality for weddings',
+    };
+  } else {
+    return {
+      tierName: 'Royal Master Tier',
+      badgeVariant: 'rose' as const,
+      recommendedFabric: 'Pure Banarasi Silk / Imported Velvet',
+      recommendedEmbroidery: '24k Gold Thread Zardozi & Swarovski Crystal Work',
+      stitchingType: 'Master Artisan Handcrafting & Heavy Silk Lining',
+      deliveryDays: '14-21 Days',
+      savingTip: 'Flagship bridal couture craftsmanship',
+    };
+  }
+};
 
 export const Design: React.FC = () => {
   const { toast } = useToast();
+  const { user } = useAuthStore();
 
   // Workflow State
   const [step, setStep] = useState<'upload' | 'analyzing' | 'results' | 'error'>('upload');
@@ -42,6 +177,13 @@ export const Design: React.FC = () => {
     bgClass: 'bg-royal-purple',
   });
 
+  // Recreate in Your Budget State
+  const [sliderBudget, setSliderBudget] = useState<number>(15000);
+  const [selectedBudgetFabric, setSelectedBudgetFabric] = useState<BudgetFabricSwatch>(
+    BUDGET_FABRIC_SWATCHES[2] // Raw Velvet/Silk default
+  );
+  const [isSavingDesign, setIsSavingDesign] = useState(false);
+
   // Modal Booking State
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [selectedBoutique, setSelectedBoutique] = useState<string>('Atelier Le Paris');
@@ -59,65 +201,62 @@ export const Design: React.FC = () => {
       url: 'https://images.unsplash.com/photo-1594552072238-b8a33785b261?auto=format&fit=crop&w=800&q=80',
     },
     {
-      name: 'Gold Embellished Look',
-      url: 'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=800&q=80',
+      name: 'Silk Cocktail Outfit',
+      url: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=800&q=80',
     },
   ];
 
+  // Fabric & Color Swatches Option List
   const fabricSwatches = [
     { name: 'Royal Velvet', priceDiff: 0 },
-    { name: 'Mulberry Silk', priceDiff: 320 },
-    { name: 'French Lace', priceDiff: 250 },
-    { name: 'Organza', priceDiff: 180 },
-    { name: 'Satin', priceDiff: 120 },
+    { name: 'Pure Dupion Silk', priceDiff: 350 },
+    { name: 'Italian Satin', priceDiff: 200 },
+    { name: 'Organza Silk', priceDiff: 150 },
+    { name: 'Linen Cashmere', priceDiff: -100 },
   ];
 
   const colorSwatches = [
     { name: 'Royal Purple', hex: '#5B2C91', bgClass: 'bg-royal-purple' },
-    { name: 'Champagne Gold', hex: '#D4AF37', bgClass: 'bg-champagne-gold' },
-    { name: 'Lavender', hex: '#E6E0F8', bgClass: 'bg-lavender' },
     { name: 'Rose Gold', hex: '#B76E79', bgClass: 'bg-rose-gold' },
+    { name: 'Emerald Silk', hex: '#046A38', bgClass: 'bg-emerald-700' },
     { name: 'Midnight Black', hex: '#0F172A', bgClass: 'bg-slate-900' },
+    { name: 'Champagne Gold', hex: '#F7E7CE', bgClass: 'bg-amber-300' },
   ];
 
-  // Start Real AI Analysis Process
-  const startAnalysis = async (imageUrl: string) => {
-    setUploadedImage(imageUrl);
+  // Trigger Image Analysis Pipeline
+  const startAnalysis = async (imageSrc: string) => {
     setStep('analyzing');
     setAnalysisError(null);
-    setAnalyzingStepText('Scanning dress silhouette & neckline...');
 
-    const timer1 = setTimeout(() => {
-      setAnalyzingStepText('Extracting fabric texture & embroidery patterns via Claude AI...');
-    }, 700);
+    const steps = [
+      'Scanning dress silhouette & necklines...',
+      'Detecting fabric weave & embroidery texture...',
+      'Matching luxury atelier database...',
+      'Calculating custom fitting estimates...',
+    ];
 
-    const timer2 = setTimeout(() => {
-      setAnalyzingStepText('Matching boutique tailors & estimated pricing...');
-    }, 1400);
+    let currentIdx = 0;
+    const interval = setInterval(() => {
+      currentIdx++;
+      if (currentIdx < steps.length) {
+        setAnalyzingStepText(steps[currentIdx]);
+      }
+    }, 600);
 
     try {
-      const result = await analyzeOutfitImage(imageUrl);
-
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-
+      const result = await analyzeOutfitImage(imageSrc);
       setAiResult(result);
-      if (result.fabric) {
-        setSelectedFabric(result.fabric);
+      // Initialize slider budget based on estimate converted approx to INR
+      if (result.estimatedPrice) {
+        setSliderBudget(Math.round(result.estimatedPrice * 18));
       }
       setStep('results');
-
-      toast({
-        title: 'AI Analysis Complete',
-        description: '8 design attributes detected with matched boutique estimates.',
-        variant: 'success',
-      });
     } catch (err: any) {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
       console.error('AI Analysis failed:', err);
-      setAnalysisError(err?.message || 'Failed to analyze outfit image. Please try again.');
+      setAnalysisError(err?.message || 'Failed to analyze garment image. Please try again.');
       setStep('error');
+    } finally {
+      clearInterval(interval);
     }
   };
 
@@ -125,10 +264,10 @@ export const Design: React.FC = () => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = () => {
-        if (reader.result) {
-          startAnalysis(reader.result as string);
-        }
+      reader.onload = (event) => {
+        const src = event.target?.result as string;
+        setUploadedImage(src);
+        startAnalysis(src);
       };
       reader.readAsDataURL(file);
     }
@@ -140,21 +279,88 @@ export const Design: React.FC = () => {
     const file = e.dataTransfer.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = () => {
-        if (reader.result) {
-          startAnalysis(reader.result as string);
-        }
+      reader.onload = (event) => {
+        const src = event.target?.result as string;
+        setUploadedImage(src);
+        startAnalysis(src);
       };
       reader.readAsDataURL(file);
     }
   };
 
-  // Price Calculation
+  // Base Price Calculation
   const currentFabricObj = fabricSwatches.find((f) => f.name === selectedFabric);
   const basePrice = isLuxury
     ? aiResult?.luxuryPrice || 2850
     : aiResult?.estimatedPrice || 890;
   const totalPrice = basePrice + (currentFabricObj?.priceDiff || 0);
+
+  // Recreate Budget Calculation
+  const finalRecreatePrice = Math.max(1500, sliderBudget + selectedBudgetFabric.priceDiff);
+  const currentTierDetails = getBudgetTierDetails(sliderBudget);
+
+  const savingsCalloutText =
+    selectedBudgetFabric.priceDiff < 0
+      ? `Switching to ${selectedBudgetFabric.name} saves ~₹${Math.abs(selectedBudgetFabric.priceDiff).toLocaleString()}`
+      : selectedBudgetFabric.priceDiff > 0
+      ? `Upgrading to ${selectedBudgetFabric.name} adds +₹${selectedBudgetFabric.priceDiff.toLocaleString()}`
+      : 'Original Signature Design Fabric Selected';
+
+  // Save Custom Recreate Request to Supabase
+  const handleSaveDesignRequest = async () => {
+    if (!user) {
+      toast({
+        title: 'Sign In Required',
+        description: 'Please sign in to save your custom design request.',
+        variant: 'error',
+      });
+      return;
+    }
+
+    setIsSavingDesign(true);
+    try {
+      const payload = {
+        user_id: user.id,
+        uploaded_image_url: uploadedImage || null,
+        price_estimate: finalRecreatePrice,
+        ai_attributes: {
+          budget_slider_inr: sliderBudget,
+          final_price_inr: finalRecreatePrice,
+          selected_fabric: selectedBudgetFabric.name,
+          fabric_price_diff_inr: selectedBudgetFabric.priceDiff,
+          savings_callout: savingsCalloutText,
+          matched_tier: currentTierDetails.tierName,
+          embroidery_suggestion: currentTierDetails.recommendedEmbroidery,
+          recommended_fabric: currentTierDetails.recommendedFabric,
+          stitching_type: currentTierDetails.stitchingType,
+          delivery_estimate: currentTierDetails.deliveryDays,
+          dress_type: aiResult?.dressType || 'Evening Velvet Gown',
+          neck_style: aiResult?.neckStyle || 'Plunging V-Neck',
+          color: selectedColor.name,
+        },
+        status: 'pending',
+      };
+
+      const { error } = await supabase.from('design_requests').insert(payload);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Recreated Design Saved! ✨',
+        description: `Saved request for ₹${finalRecreatePrice.toLocaleString()} (${selectedBudgetFabric.name}). Saved to your atelier profile.`,
+        variant: 'success',
+      });
+    } catch (err: any) {
+      console.error('Error saving design request:', err);
+      toast({
+        title: 'Save Failed',
+        description: err.message || 'Could not save design request to database.',
+        variant: 'error',
+      });
+    } finally {
+      setIsSavingDesign(false);
+    }
+  };
 
   const resetWorkflow = () => {
     setStep('upload');
@@ -169,22 +375,42 @@ export const Design: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-6">
         <div>
           <Badge variant="rose" dot className="mb-2">
-            Flagship AI Atelier
+            AI Style Identifier
           </Badge>
           <h1 className="font-poppins text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-3">
-            <Sparkles className="w-8 h-8 text-royal-purple dark:text-lavender animate-pulse" />
-            Design Your Outfit
+            <Sparkles className="w-8 h-8 text-[#8B5CF6] dark:text-purple-400 animate-pulse" />
+            Identify My Outfit
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-inter mt-1 max-w-2xl">
-            Upload a Pinterest screenshot or dress inspiration. Our AI extracts pattern features, matches luxury tailors, and generates custom fitting estimates.
+            Upload a photo of any outfit. Our AI identifies the dress style, fabric, and matches expert tailors to recreate it in your budget.
           </p>
         </div>
 
         {(step === 'results' || step === 'error') && (
           <Button variant="outline" size="sm" leftIcon={<RotateCcw className="w-4 h-4" />} onClick={resetWorkflow}>
-            Upload Another Image
+            Upload Another Photo
           </Button>
         )}
+      </div>
+
+      {/* Step Indicators Bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-poppins font-semibold">
+        <div className={`p-3 rounded-xl border flex items-center gap-2 ${step === 'upload' ? 'bg-[#8B5CF6]/10 border-[#8B5CF6] text-purple-400' : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400'}`}>
+          <span className="w-5 h-5 rounded-full bg-[#8B5CF6] text-white flex items-center justify-center text-[10px] font-bold">1</span>
+          <span>Upload a Photo</span>
+        </div>
+        <div className={`p-3 rounded-xl border flex items-center gap-2 ${step === 'analyzing' ? 'bg-[#8B5CF6]/10 border-[#8B5CF6] text-purple-400' : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400'}`}>
+          <span className="w-5 h-5 rounded-full bg-[#8B5CF6] text-white flex items-center justify-center text-[10px] font-bold">2</span>
+          <span>We Identify Style</span>
+        </div>
+        <div className={`p-3 rounded-xl border flex items-center gap-2 ${step === 'results' ? 'bg-[#8B5CF6]/10 border-[#8B5CF6] text-purple-400' : 'bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400'}`}>
+          <span className="w-5 h-5 rounded-full bg-[#8B5CF6] text-white flex items-center justify-center text-[10px] font-bold">3</span>
+          <span>Choose a Designer</span>
+        </div>
+        <div className="p-3 rounded-xl border flex items-center gap-2 bg-slate-100 dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-400">
+          <span className="w-5 h-5 rounded-full bg-slate-400 text-white flex items-center justify-center text-[10px] font-bold">4</span>
+          <span>Confirm Your Order</span>
+        </div>
       </div>
 
       {/* STEP 1: Upload Zone */}
@@ -195,7 +421,7 @@ export const Design: React.FC = () => {
           exit={{ opacity: 0 }}
           className="space-y-8"
         >
-          {/* Main Drag-and-Drop Dropzone */}
+          {/* Dropzone */}
           <div
             onDragOver={(e) => {
               e.preventDefault();
@@ -246,20 +472,23 @@ export const Design: React.FC = () => {
                 <Card
                   key={idx}
                   hoverEffect
-                  onClick={() => startAnalysis(preset.url)}
-                  className="p-3 flex items-center space-x-3 cursor-pointer group"
+                  className="p-3 flex items-center gap-3 cursor-pointer group"
+                  onClick={() => {
+                    setUploadedImage(preset.url);
+                    startAnalysis(preset.url);
+                  }}
                 >
                   <img
                     src={preset.url}
                     alt={preset.name}
-                    className="w-16 h-16 rounded-xl object-cover shrink-0 group-hover:scale-105 transition-transform"
+                    className="w-14 h-14 rounded-2xl object-cover shrink-0 bg-slate-100 dark:bg-slate-800"
                   />
-                  <div>
-                    <span className="font-poppins font-semibold text-xs text-slate-900 dark:text-slate-100 block">
+                  <div className="space-y-1 overflow-hidden">
+                    <CardTitle className="text-xs group-hover:text-royal-purple dark:group-hover:text-lavender transition-colors">
                       {preset.name}
-                    </span>
-                    <span className="text-[10px] text-royal-purple dark:text-lavender font-bold flex items-center gap-1 mt-1">
-                      Analyze with AI <ArrowRight className="w-3 h-3" />
+                    </CardTitle>
+                    <span className="text-[11px] text-slate-400 block font-mono">
+                      Click to Test AI Scan
                     </span>
                   </div>
                 </Card>
@@ -269,52 +498,37 @@ export const Design: React.FC = () => {
         </motion.div>
       )}
 
-      {/* STEP 2: AI Scanning Animation */}
+      {/* STEP 2: Analyzing Loading State */}
       {step === 'analyzing' && (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="flex flex-col items-center justify-center p-8 space-y-6"
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="py-16 flex flex-col items-center justify-center text-center space-y-6 bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm max-w-2xl mx-auto"
         >
-          <div className="relative w-80 h-96 rounded-3xl overflow-hidden shadow-2xl bg-slate-950 border border-slate-800 flex items-center justify-center">
-            {uploadedImage && (
-              <img src={uploadedImage} alt="Analyzing" className="w-full h-full object-cover opacity-60" />
-            )}
+          <div className="relative">
+            <div className="w-20 h-20 rounded-full border-4 border-royal-purple/20 border-t-royal-purple dark:border-t-lavender animate-spin" />
+            <Sparkles className="w-8 h-8 text-royal-purple dark:text-lavender absolute inset-0 m-auto animate-pulse" />
+          </div>
 
-            {/* Glowing Laser Scan Line */}
-            <motion.div
-              animate={{ y: [-180, 180, -180] }}
-              transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-              className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-champagne-gold to-transparent shadow-[0_0_15px_#D4AF37]"
-            />
-
-            {/* Center Status Overlay */}
-            <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[2px] flex flex-col items-center justify-center p-6 text-center text-white space-y-3">
-              <Sparkles className="w-10 h-10 text-champagne-gold animate-spin-slow" />
-              <div className="space-y-1">
-                <span className="font-poppins font-bold text-sm tracking-wide text-lavender">
-                  AI Atelier Scanning
-                </span>
-                <p className="text-xs text-slate-300 font-mono animate-pulse">
-                  {analyzingStepText}
-                </p>
-              </div>
-            </div>
+          <div className="space-y-2">
+            <h3 className="font-poppins font-extrabold text-xl text-slate-900 dark:text-slate-100">
+              AI Atelier Neural Analysis
+            </h3>
+            <p className="text-xs font-mono text-royal-purple dark:text-lavender animate-pulse">
+              {analyzingStepText}
+            </p>
           </div>
         </motion.div>
       )}
 
-      {/* ERROR STEP: Friendly Retry State */}
+      {/* STEP Error State */}
       {step === 'error' && (
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="p-8 rounded-3xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-center space-y-4 max-w-lg mx-auto"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-8 rounded-3xl bg-rose-500/10 border border-rose-500/30 text-center space-y-4 max-w-xl mx-auto"
         >
-          <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-300 flex items-center justify-center mx-auto">
-            <AlertCircle className="w-6 h-6" />
-          </div>
+          <AlertCircle className="w-12 h-12 text-rose-500 mx-auto" />
           <div className="space-y-1">
             <h3 className="font-poppins font-bold text-lg text-rose-900 dark:text-rose-100">
               AI Analysis Error
@@ -428,8 +642,13 @@ export const Design: React.FC = () => {
                     <span className="text-[10px] text-slate-400">Delivery</span>
                   </div>
 
-                  <Button variant="primary" size="lg" onClick={() => setIsBookingOpen(true)}>
-                    Book Fitting
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    onClick={() => setIsBookingOpen(true)}
+                    leftIcon={<Video className="w-4 h-4 text-emerald-400 animate-pulse" />}
+                  >
+                    Book Consultation
                   </Button>
                 </div>
               </Card>
@@ -463,6 +682,214 @@ export const Design: React.FC = () => {
                   </span>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* ========================================================= */}
+          {/* FEATURE 2: RECREATE IN YOUR BUDGET SECTION */}
+          {/* ========================================================= */}
+          <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-slate-900 via-royal-purple/20 to-slate-950 border border-royal-purple/30 text-white space-y-8 shadow-xl relative overflow-hidden">
+            {/* Ambient Background Glow */}
+            <div className="absolute top-0 right-0 w-80 h-80 bg-royal-purple/20 rounded-full blur-3xl -z-0 pointer-events-none" />
+
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Badge variant="gold" size="sm" dot>Smart Recreation Engine</Badge>
+                  <span className="text-[11px] font-mono text-amber-300 flex items-center gap-1">
+                    <Coins className="w-3.5 h-3.5" /> Dynamic Fabric & Cost Optimization
+                  </span>
+                </div>
+                <h3 className="font-poppins text-2xl font-extrabold text-white flex items-center gap-2.5">
+                  <Sliders className="w-6 h-6 text-amber-400" />
+                  Recreate In Your Budget
+                </h3>
+                <p className="text-xs text-slate-300 max-w-xl font-inter">
+                  Drag the budget slider to live-recalculate your outfit estimate. Our AI automatically adapts recommended fabric textures and embroidery complexity to fit your target cost.
+                </p>
+              </div>
+
+              {/* Price Display with Animated Counter */}
+              <div className="p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 text-center min-w-[200px] shrink-0">
+                <span className="text-[10px] uppercase font-bold text-slate-400 font-poppins block">
+                  Recreated Outfit Estimate
+                </span>
+                <div className="font-poppins font-extrabold text-3xl text-amber-300 tracking-tight my-0.5">
+                  <AnimatedNumber value={finalRecreatePrice} prefix="₹" />
+                </div>
+                <Badge variant={currentTierDetails.badgeVariant} size="sm">
+                  {currentTierDetails.tierName}
+                </Badge>
+              </div>
+            </div>
+
+            {/* Slider & Tier Detail Grid */}
+            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+              {/* Left 7 Columns: Range Slider & Circular Swatches */}
+              <div className="lg:col-span-7 space-y-6">
+                {/* 1. Range Slider (₹2,000 to ₹50,000) */}
+                <div className="space-y-3 p-4 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-sm">
+                  <div className="flex items-center justify-between text-xs font-poppins font-bold">
+                    <span className="text-slate-300 flex items-center gap-1.5">
+                      <Coins className="w-4 h-4 text-amber-400" /> Target Budget Limit
+                    </span>
+                    <span className="text-amber-300 font-mono text-sm">
+                      ₹{sliderBudget.toLocaleString()}
+                    </span>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={2000}
+                    max={50000}
+                    step={500}
+                    value={sliderBudget}
+                    onChange={(e) => setSliderBudget(Number(e.target.value))}
+                    className="w-full h-2.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400 hover:accent-amber-300 transition-all"
+                  />
+
+                  <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
+                    <span>₹2,000 (Budget)</span>
+                    <span>₹25,000 (Couture)</span>
+                    <span>₹50,000 (Royal)</span>
+                  </div>
+                </div>
+
+                {/* 2. Circular Fabric Swatch Picker */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-poppins font-bold text-xs uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-rose-gold" /> Tap Circular Fabric Swatch to Compare
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {BUDGET_FABRIC_SWATCHES.map((swatch) => {
+                      const isSelected = selectedBudgetFabric.id === swatch.id;
+                      return (
+                        <motion.button
+                          key={swatch.id}
+                          whileHover={{ scale: 1.04 }}
+                          whileTap={{ scale: 0.96 }}
+                          onClick={() => setSelectedBudgetFabric(swatch)}
+                          className={`p-3 rounded-2xl border text-left transition-all duration-200 flex flex-col items-center text-center space-y-2 relative overflow-hidden ${
+                            isSelected
+                              ? 'bg-royal-purple/40 border-amber-400 ring-2 ring-amber-400/50 shadow-lg shadow-royal-purple/30'
+                              : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 opacity-80 hover:opacity-100'
+                          }`}
+                        >
+                          {/* Circular Swatch Visualizer */}
+                          <div
+                            className={`w-12 h-12 rounded-full bg-gradient-to-tr ${swatch.colorGradient} border-2 flex items-center justify-center shadow-md relative`}
+                          >
+                            {isSelected && (
+                              <Check className="w-5 h-5 drop-shadow-md stroke-[3]" />
+                            )}
+                          </div>
+
+                          <div className="space-y-0.5 w-full">
+                            <span className="font-poppins font-bold text-xs text-white block truncate">
+                              {swatch.name}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block font-mono truncate">
+                              {swatch.subLabel}
+                            </span>
+                          </div>
+
+                          <div className="pt-1 w-full border-t border-white/10 flex items-center justify-center">
+                            <span
+                              className={`text-[11px] font-mono font-bold ${
+                                swatch.priceDiff < 0
+                                  ? 'text-emerald-400'
+                                  : swatch.priceDiff > 0
+                                  ? 'text-amber-300'
+                                  : 'text-slate-300'
+                              }`}
+                            >
+                              {swatch.priceDiff === 0
+                                ? 'Base Cost'
+                                : swatch.priceDiff < 0
+                                ? `-₹${Math.abs(swatch.priceDiff)}`
+                                : `+₹${swatch.priceDiff}`}
+                            </span>
+                          </div>
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 3. Animated Dynamic Savings Callout Pill */}
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={selectedBudgetFabric.id}
+                    initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                    transition={{ duration: 0.25 }}
+                    className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/60 via-slate-900 to-slate-900 border border-emerald-500/40 text-emerald-300 text-xs font-poppins font-semibold flex items-center justify-between shadow-md"
+                  >
+                    <span className="flex items-center gap-2">
+                      <TrendingDown className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>{savingsCalloutText}</span>
+                    </span>
+                    <Badge variant="gold" size="sm">Smart Pick</Badge>
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+
+              {/* Right 5 Columns: Tier Breakdown & Finalize Button */}
+              <div className="lg:col-span-5 space-y-4">
+                <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3 text-xs">
+                  <h4 className="font-poppins font-bold text-sm text-white flex items-center gap-2 border-b border-slate-800 pb-2">
+                    <Zap className="w-4 h-4 text-amber-400" />
+                    AI Recreation Specifications
+                  </h4>
+
+                  <div className="space-y-2 text-slate-300">
+                    <div className="flex justify-between items-start">
+                      <span className="text-slate-400">Matched Tier:</span>
+                      <span className="font-bold text-white text-right">{currentTierDetails.tierName}</span>
+                    </div>
+
+                    <div className="flex justify-between items-start">
+                      <span className="text-slate-400">Fabric Recommendation:</span>
+                      <span className="font-bold text-amber-300 text-right">{selectedBudgetFabric.name}</span>
+                    </div>
+
+                    <div className="flex justify-between items-start">
+                      <span className="text-slate-400">Embroidery Style:</span>
+                      <span className="font-bold text-white text-right">{currentTierDetails.recommendedEmbroidery}</span>
+                    </div>
+
+                    <div className="flex justify-between items-start">
+                      <span className="text-slate-400">Tailoring Craft:</span>
+                      <span className="font-bold text-slate-200 text-right">{currentTierDetails.stitchingType}</span>
+                    </div>
+
+                    <div className="flex justify-between items-start">
+                      <span className="text-slate-400">Estimated Delivery:</span>
+                      <span className="font-mono font-bold text-emerald-400 text-right">{currentTierDetails.deliveryDays}</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-800 text-[11px] text-amber-200/90 font-mono italic">
+                    💡 {currentTierDetails.savingTip}
+                  </div>
+                </div>
+
+                {/* Database Finalize Action Button */}
+                <Button
+                  variant="gold"
+                  size="lg"
+                  className="w-full py-3.5 shadow-lg shadow-amber-500/20"
+                  isLoading={isSavingDesign}
+                  onClick={handleSaveDesignRequest}
+                  leftIcon={<Sparkles className="w-4 h-4 text-amber-950" />}
+                >
+                  Save & Lock Custom Recreate Budget
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -590,7 +1017,7 @@ export const Design: React.FC = () => {
                       setIsBookingOpen(true);
                     }}
                   >
-                    Select Atelier
+                    Book Consultation
                   </Button>
                 </Card>
               ))}
@@ -599,48 +1026,17 @@ export const Design: React.FC = () => {
         </motion.div>
       )}
 
-      {/* Booking Confirmation Modal */}
-      <Modal
+      {/* Live Consultation Booking Modal */}
+      <ConsultationBookingModal
         isOpen={isBookingOpen}
         onClose={() => setIsBookingOpen(false)}
-        title="Confirm Fitting Consultation"
-        description={`Schedule your 3D custom fitting with ${selectedBoutique}.`}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setIsBookingOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => {
-                setIsBookingOpen(false);
-                toast({
-                  title: 'Fitting Consultation Reserved',
-                  description: `Appointment reserved at ${selectedBoutique}. Confirmation sent to your email.`,
-                  variant: 'success',
-                });
-              }}
-            >
-              Confirm Appointment
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-4 text-sm text-slate-600 dark:text-slate-300 font-inter py-2">
-          <div className="p-4 rounded-2xl bg-lavender/30 dark:bg-slate-800 border border-lavender/50 space-y-1">
-            <span className="font-poppins font-bold text-xs text-royal-purple dark:text-lavender block">
-              Fitting Details Summary:
-            </span>
-            <div className="text-xs space-y-1 text-slate-700 dark:text-slate-300">
-              <p>• <strong>Dress Type:</strong> {aiResult?.dressType || 'Evening Velvet Gown'}</p>
-              <p>• <strong>Selected Fabric:</strong> {selectedFabric}</p>
-              <p>• <strong>Selected Color:</strong> {selectedColor.name}</p>
-              <p>• <strong>Estimated Total:</strong> ${totalPrice.toLocaleString()}</p>
-              <p>• <strong>Tier:</strong> {isLuxury ? 'Luxury Atelier Version' : 'Budget Version'}</p>
-            </div>
-          </div>
-        </div>
-      </Modal>
+        boutiqueOrDesigner={{
+          name: selectedBoutique,
+          specialty: 'Master Custom Fitting & Silk Tailoring',
+          location: 'Paris Atelier',
+        }}
+        onSuccess={() => setIsBookingOpen(false)}
+      />
     </div>
   );
 };

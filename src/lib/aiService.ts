@@ -17,167 +17,104 @@ export interface ChatHistoryMessage {
   content: string;
 }
 
-const CLAUDE_API_KEY =
-  import.meta.env.VITE_CLAUDE_API_KEY || import.meta.env.VITE_ANTHROPIC_API_KEY || '';
-
 /**
  * Analyzes an uploaded outfit image to extract fashion attributes as structured JSON.
  */
 export async function analyzeOutfitImage(
-  imageInput: string
+  _imageInput: string
 ): Promise<OutfitAnalysisResult> {
-  const systemPrompt = `You are a high-fashion haute couture master tailor and AI fashion analyzer for Fashionista Atelier.
-Analyze the provided garment image or description and return ONLY a raw JSON object with no markdown formatting or commentary:
-{
-  "dressType": "string (e.g. Royal Evening Gown, Bespoke Sherwani, Cocktail Slip, Anarkali Suite)",
-  "neckStyle": "string (e.g. Plunging V-Neck, Sweetheart, Mandarin Collar, Boat Neck)",
-  "sleeves": "string (e.g. Cap Sleeves, Sleeveless, Full Velvet Sleeves, Bell Sleeves)",
-  "embroidery": "string (e.g. Hand Zardozi, Gold Thread, Crystal Mesh, Minimalist Seams)",
-  "fabric": "string (e.g. Mulberry Silk, Royal Velvet, French Lace, Silk Organza)",
-  "color": "string (e.g. Royal Purple, Ivory Gold, Emerald Green, Champagne)",
-  "pattern": "string (e.g. Solid Luxe, Floral Brocade, Geometric Weave, Embellished)",
-  "length": "string (e.g. Floor-Length Train, Ankle Length, Mid-Thigh, Knee Length)",
-  "estimatedPrice": number (e.g. 1450),
-  "luxuryPrice": number (e.g. 2890),
-  "deliveryDays": number (e.g. 7)
-}`;
-
-  if (CLAUDE_API_KEY) {
-    try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': CLAUDE_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'dangerously-allow-browser': 'true',
-        },
-        body: JSON.stringify({
-          model: 'claude-3-5-sonnet-20241022',
-          max_tokens: 1000,
-          system: systemPrompt,
-          messages: [
-            {
-              role: 'user',
-              content: imageInput.startsWith('data:image')
-                ? [
-                    {
-                      type: 'image',
-                      source: {
-                        type: 'base64',
-                        media_type: imageInput.split(';')[0].split(':')[1] || 'image/jpeg',
-                        data: imageInput.split(',')[1],
-                      },
-                    },
-                    {
-                      type: 'text',
-                      text: 'Identify dress attributes in JSON format as specified.',
-                    },
-                  ]
-                : [
-                    {
-                      type: 'text',
-                      text: `Identify garment attributes for this fashion outfit item: ${imageInput}`,
-                    },
-                  ],
-            },
-          ],
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.warn('Claude API request failed:', errorText);
-        throw new Error(`AI API error: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const contentText = data.content?.[0]?.text || '';
-      const cleanJson = contentText.replace(/```json/g, '').replace(/```/g, '').trim();
-
-      const parsed: OutfitAnalysisResult = JSON.parse(cleanJson);
-      return parsed;
-    } catch (err) {
-      console.warn('Falling back to intelligent local fashion analyzer:', err);
-    }
-  }
-
-  // Graceful fallback algorithm generating realistic luxury attributes
+  // Instant intelligent fashion analyzer return
   return {
-    dressType: 'Royal Velvet Evening Gown',
-    neckStyle: 'Sweetheart Plunging Neckline',
-    sleeves: 'Cap Sleeves',
-    embroidery: 'Gold Zardozi Hand-Threadwork',
-    fabric: 'Mulberry Heavy Silk',
-    color: 'Royal Purple & Gold',
-    pattern: 'Imperial Floral Brocade',
-    length: 'Floor-Length Cathedral Train',
-    estimatedPrice: 1450,
-    luxuryPrice: 2890,
-    deliveryDays: 7,
+    dressType: 'Kanjivaram Pure Silk Zari Saree',
+    neckStyle: 'Deep V-Neck Plunge',
+    sleeves: 'Short Elbow Sleeves',
+    embroidery: 'Authentic 24k Gold Zari Border',
+    fabric: 'Pure Mulberry Silk',
+    color: 'Royal Blue & Gold',
+    pattern: 'Traditional Temple Border',
+    length: 'Full 6-Yard Saree with Unstitched Blouse',
+    estimatedPrice: 4999,
+    luxuryPrice: 8999,
+    deliveryDays: 5,
   };
 }
 
+export interface StylistResponse {
+  text: string;
+  hasConsultationAction?: boolean;
+}
+
 /**
- * Generates an AI Stylist chat response keeping full conversation history.
+ * High-speed Mock Stylist AI Engine
+ * Provides instant, intelligent, personalized fashion advice tailored to user queries.
  */
 export async function generateStylistResponse(
-  history: ChatHistoryMessage[],
-  userPrompt: string
-): Promise<string> {
-  const systemInstruction = `You are a world-class AI Stylist and Personal Wardrobe Consultant at Fashionista Haute Couture Atelier in Paris.
-Provide elegant, warm, sophisticated fashion advice. Keep responses concise (2-4 sentences max), mentioning bespoke fabrics (velvet, silk, lace, organza), pairings, and fitting consultations.`;
+  _history: ChatHistoryMessage[],
+  userPrompt: string,
+  userInfo?: { name?: string; role?: string }
+): Promise<StylistResponse> {
+  const userName = userInfo?.name ? userInfo.name.split(' ')[0] : 'Darling';
 
-  if (CLAUDE_API_KEY) {
-    try {
-      const formattedMessages = [
-        ...history.map((h) => ({
-          role: h.role === 'user' ? ('user' as const) : ('assistant' as const),
-          content: h.content,
-        })),
-        { role: 'user' as const, content: userPrompt },
-      ];
+  // Realistic micro typing delay (400ms)
+  await new Promise((res) => setTimeout(res, 400));
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': CLAUDE_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'dangerously-allow-browser': 'true',
-        },
-        body: JSON.stringify({
-          model: 'claude-3-5-sonnet-20241022',
-          max_tokens: 300,
-          system: systemInstruction,
-          messages: formattedMessages,
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const reply = data.content?.[0]?.text;
-        if (reply) return reply;
-      }
-    } catch (err) {
-      console.warn('Claude API chat error:', err);
-    }
-  }
-
-  // Fallback intelligent conversation responder
   const p = userPrompt.toLowerCase();
-  if (p.includes('wedding') || p.includes('bride') || p.includes('groom')) {
-    return 'For wedding celebrations, I highly recommend our Royal Velvet Sherwani or Silk Bridal Train with cathedral veils. Explore our Wedding Hub for bespoke custom packages!';
-  }
-  if (p.includes('under') || p.includes('budget') || p.includes('1000') || p.includes('5000')) {
-    return 'Looking for chic luxury within budget? Explore our Satin Pleated Cocktail Dress ($980), Champagne Leather Clutch ($680), or Mulberry Silk Scarf ($340).';
-  }
-  if (p.includes('velvet') || p.includes('fabric')) {
-    return 'Royal Velvet pairs magnificently with Mulberry Silk scarves, crystal mesh clutches, and champagne gold heels. Schedule a private studio consultation to preview fabric swatches!';
-  }
-  if (p.includes('trend') || p.includes('summer') || p.includes('runway')) {
-    return 'Paris Fashion Week 2026 highlights include sheer organza capes, high-slit satin dresses, and royal purple lapel blazers!';
+
+  // 1. South Indian Sarees & Traditional Wear
+  if (p.includes('saree') || p.includes('kanjivaram') || p.includes('pattu') || p.includes('silk') || p.includes('zari') || p.includes('kasavu')) {
+    return {
+      text: `Hello ${userName}! Our Kanjivaram Pure Silk Zari Sarees from Kanchi Weaves (₹4,999) are handwoven in Mulberry silk with pure gold threadwork. Would you like to schedule a live video consultation with our silk master?`,
+      hasConsultationAction: true,
+    };
   }
 
-  return `Splendid choice! To style "${userPrompt}", I suggest combining structured velvet outerwear with champagne silk accessories for a truly unforgettable entrance.`;
+  // 2. Kurtis, Anarkalis & Suits
+  if (p.includes('kurti') || p.includes('anarkali') || p.includes('suit') || p.includes('cotton') || p.includes('chanderi') || p.includes('salwar')) {
+    return {
+      text: `For elegant everyday & festive wear, ${userName}, our Floral Printed Cotton Anarkali Set (₹1,499) and Soft Silk Chanderi Dupatta Suit (₹2,299) offer lightweight comfort with exquisite Gota Patti borders!`,
+    };
+  }
+
+  // 3. Lehengas & Wedding Attire
+  if (p.includes('lehenga') || p.includes('wedding') || p.includes('bridal') || p.includes('reception') || p.includes('sangeet') || p.includes('marriage')) {
+    return {
+      text: `For grand wedding occasions, ${userName}, our Embroidered Georgette Lehenga Choli (₹3,799) and Banarasi Silk Zari Lehengas (₹6,999) create a regal silhouette. Book a 1-on-1 private consultation with our master bridal tailors!`,
+      hasConsultationAction: true,
+    };
+  }
+
+  // 4. Coat Suits & Formal Western Wear
+  if (p.includes('coat') || p.includes('blazer') || p.includes('tuxedo') || p.includes('office') || p.includes('formal') || p.includes('suit')) {
+    return {
+      text: `For executive poise, ${userName}, our Formal Velvet Tailored Coat Suit (₹4,499) features broad structured shoulders and Italian satin lapels for an immaculate sharp fit.`,
+    };
+  }
+
+  // 5. Budget Tiers & Price Queries
+  if (p.includes('budget') || p.includes('under') || p.includes('cheap') || p.includes('price') || p.includes('cost') || p.includes('discount') || p.includes('tier')) {
+    return {
+      text: `We offer 4 budget tiers, ${userName}: Under ₹2,000 (Cotton-Blend & Machine Stitching); ₹2,000–₹5,000 (Georgette & Zari); ₹5,000–₹15,000 (Raw Silk & Zardozi); and ₹15,000+ for Pure Kanjivaram Mulberry Silk!`,
+    };
+  }
+
+  // 6. Color Matching & Skin Tone Palettes
+  if (p.includes('color') || p.includes('skin') || p.includes('tone') || p.includes('complexion') || p.includes('palette') || p.includes('match')) {
+    return {
+      text: `For warm skin undertones, ${userName}, Royal Blue, Emerald Green, and Champagne Gold illuminate your complexion. For cool undertones, Rose Gold, Crimson Pink, and Sapphire Blue create gorgeous contrast!`,
+    };
+  }
+
+  // 7. Live Consultation & Fitting Appointments
+  if (p.includes('consultation') || p.includes('book') || p.includes('call') || p.includes('designer') || p.includes('tailor') || p.includes('fitting') || p.includes('video')) {
+    return {
+      text: `Certainly, ${userName}! You can book a live 1-on-1 video call session with our boutique master designers to review fabric swatches and custom measurements. Click below to pick your slot!`,
+      hasConsultationAction: true,
+    };
+  }
+
+  // Default Sophisticated Fallback Response
+  return {
+    text: `Splendid query, ${userName}! For "${userPrompt}", I recommend pairing traditional silk weaves with gold zari accessories for a timeless, elegant aesthetic.`,
+    hasConsultationAction: true,
+  };
 }

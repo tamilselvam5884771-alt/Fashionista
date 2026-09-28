@@ -1,621 +1,335 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import React from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import {
-  Sparkles,
   ArrowRight,
-  ChevronLeft,
-  ChevronRight,
+  ShieldCheck,
+  Award,
+  Scissors,
   Heart,
-  Star,
-  MapPin,
-  Clock,
-  Crown,
   ShoppingBag,
-  Eye,
-  AlertCircle,
+  Sparkles,
 } from 'lucide-react';
-import {
-  Button,
-  Card,
-  CardTitle,
-  CardDescription,
-  Badge,
-  Skeleton,
-  useToast,
-} from '../components/ui';
-import { heroBanners, recentlyViewed } from '../lib/mockData';
-import { supabase } from '../lib/supabaseClient';
+import { Button, Card, useToast } from '../components/ui';
+import { categoryProducts } from '../lib/mockData';
+import { useCartStore } from '../store/useCartStore';
+import { useWishlistStore } from '../store/useWishlistStore';
 
-interface OutfitItem {
-  id: string;
-  title: string;
-  designer: string;
-  image: string;
-  price: number;
-  originalPrice?: number;
-  matchScore: number;
-  reason: string;
-  category: string;
-  occasion: string;
-}
+// Helper for category-specific luxury theme accents
+export const getCategoryTheme = (category: string) => {
+  const cat = category.toLowerCase();
 
-interface BoutiqueItem {
-  id: string;
-  name: string;
-  location: string;
-  rating: number;
-  reviewCount: number;
-  image: string;
-  isOpen: boolean;
-  distance: string;
-  specialty: string;
-}
+  if (cat.includes('saree') || cat.includes('pattu') || cat.includes('silk')) {
+    // 1. Sarees: Royal Purple (#5B2C91) Theme
+    return {
+      border: 'border-[#5B2C91]/40',
+      hoverBorder: 'hover:border-[#5B2C91]',
+      badgeBg: 'bg-[#5B2C91]/25 border-[#5B2C91]/40',
+      badgeText: 'text-purple-300',
+      gradientOverlay: 'from-[#5B2C91]/40 via-[#0F0F14]/70 to-transparent',
+      glow: 'hover:shadow-[0_12px_32px_rgba(91,44,145,0.35)]',
+      accentDot: 'bg-[#5B2C91]',
+    };
+  } else if (cat.includes('lehenga') || cat.includes('choli') || cat.includes('festive')) {
+    // 2. Lehengas: Rose Gold (#B76E79) Theme
+    return {
+      border: 'border-[#B76E79]/40',
+      hoverBorder: 'hover:border-[#B76E79]',
+      badgeBg: 'bg-[#B76E79]/25 border-[#B76E79]/40',
+      badgeText: 'text-rose-300',
+      gradientOverlay: 'from-[#B76E79]/40 via-[#0F0F14]/70 to-transparent',
+      glow: 'hover:shadow-[0_12px_32px_rgba(183,110,121,0.35)]',
+      accentDot: 'bg-[#B76E79]',
+    };
+  } else if (cat.includes('wedding') || cat.includes('bridal') || cat.includes('gown')) {
+    // 3. Wedding Wear: Champagne Gold (#D4AF37) Theme
+    return {
+      border: 'border-[#D4AF37]/50',
+      hoverBorder: 'hover:border-[#D4AF37]',
+      badgeBg: 'bg-[#D4AF37]/20 border-[#D4AF37]/40',
+      badgeText: 'text-amber-300',
+      gradientOverlay: 'from-[#D4AF37]/35 via-[#0F0F14]/70 to-transparent',
+      glow: 'hover:shadow-[0_12px_32px_rgba(212,175,55,0.3)]',
+      accentDot: 'bg-[#D4AF37]',
+    };
+  } else {
+    // 4. Suits / Kurtis: Lavender (#E6E0F8) Theme
+    return {
+      border: 'border-[#E6E0F8]/35',
+      hoverBorder: 'hover:border-[#E6E0F8]',
+      badgeBg: 'bg-[#E6E0F8]/15 border-[#E6E0F8]/30',
+      badgeText: 'text-[#E6E0F8]',
+      gradientOverlay: 'from-[#E6E0F8]/30 via-[#0F0F14]/70 to-transparent',
+      glow: 'hover:shadow-[0_12px_32px_rgba(230,224,248,0.25)]',
+      accentDot: 'bg-[#E6E0F8]',
+    };
+  }
+};
 
 export const Home: React.FC = () => {
+  const navigate = useNavigate();
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(true);
-  const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Supabase Data State
-  const [aiPicks, setAiPicks] = useState<OutfitItem[]>([]);
-  const [trendingCollections, setTrendingCollections] = useState<any[]>([]);
-  const [nearbyBoutiques, setNearbyBoutiques] = useState<BoutiqueItem[]>([]);
-
-  // Carousel State
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Wishlist State (Mock/Local)
-  const [wishlistedIds, setWishlistedIds] = useState<string[]>([]);
-
-  useEffect(() => {
-    const loadHomeData = async () => {
-      setIsLoading(true);
-      setFetchError(null);
-      try {
-        // 1. Fetch Top Rated Outfits for AI Picks & Trending Collections
-        const { data: outfitsData, error: outfitsErr } = await supabase
-          .from('outfits')
-          .select('*, boutiques(name, location)')
-          .order('rating', { ascending: false })
-          .limit(8);
-
-        if (outfitsErr) throw outfitsErr;
-
-        if (outfitsData) {
-          const mappedPicks: OutfitItem[] = outfitsData.map((item: any, idx: number) => ({
-            id: item.id,
-            title: item.title,
-            designer: item.boutiques?.name || item.category || 'Atelier',
-            image:
-              item.image_url ||
-              'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=800&q=80',
-            price: Number(item.price),
-            originalPrice: Number(item.price) * 1.2,
-            matchScore: 98 - (idx * 2),
-            reason: `Handpicked for ${item.occasion || 'Evening'} elegance in ${item.fabric || 'silk'}`,
-            category: item.category || 'Couture',
-            occasion: item.occasion || 'Evening',
-          }));
-
-          setAiPicks(mappedPicks);
-
-          // Group into 3 Trending Lookbooks
-          setTrendingCollections([
-            {
-              id: 'trend-1',
-              title: 'Royal Bridal & Wedding Suite',
-              tag: 'Wedding 2026',
-              image:
-                outfitsData[1]?.image_url ||
-                'https://images.unsplash.com/photo-1594552072238-b8a33785b261?auto=format&fit=crop&w=800&q=80',
-              itemCount: 14,
-              description: 'Opulent wedding gowns, cathedral veils, and embroidered sherwanis.',
-            },
-            {
-              id: 'trend-2',
-              title: 'Midnight Velvet & Opera Galas',
-              tag: 'Evening Couture',
-              image:
-                outfitsData[0]?.image_url ||
-                'https://images.unsplash.com/photo-1566174053879-31528523f8ae?auto=format&fit=crop&w=800&q=80',
-              itemCount: 18,
-              description: 'Bespoke velvet suits, corsets, and champagne silk evening dresses.',
-            },
-            {
-              id: 'trend-3',
-              title: 'Parisian Organza & Silk Capes',
-              tag: 'Runway Highlights',
-              image:
-                outfitsData[3]?.image_url ||
-                'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&w=800&q=80',
-              itemCount: 12,
-              description: 'Lightweight organza layers, pleated blazers, and runway accessories.',
-            },
-          ]);
-        }
-
-        // 2. Fetch Boutiques from Supabase
-        const { data: boutiquesData, error: boutiquesErr } = await supabase
-          .from('boutiques')
-          .select('*')
-          .limit(6);
-
-        if (boutiquesErr) throw boutiquesErr;
-
-        if (boutiquesData) {
-          const boutiqueImages = [
-            'https://images.unsplash.com/photo-1567401893414-76b7b1e5a7a5?auto=format&fit=crop&w=600&q=80',
-            'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?auto=format&fit=crop&w=600&q=80',
-            'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=600&q=80',
-            'https://images.unsplash.com/photo-1537832816519-689ad163238b?auto=format&fit=crop&w=600&q=80',
-            'https://images.unsplash.com/photo-1479064555552-3ef4979f8908?auto=format&fit=crop&w=600&q=80',
-            'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&w=600&q=80',
-          ];
-
-          const mappedBoutiques: BoutiqueItem[] = boutiquesData.map((bt: any, idx: number) => ({
-            id: bt.id,
-            name: bt.name,
-            location: bt.location || 'Paris, France',
-            rating: Number(bt.rating) || 4.9,
-            reviewCount: 24 + idx * 7,
-            image: boutiqueImages[idx % boutiqueImages.length],
-            isOpen: idx % 4 !== 3,
-            distance: `${(0.8 + idx * 0.4).toFixed(1)} km`,
-            specialty: Array.isArray(bt.portfolio)
-              ? bt.portfolio.join(', ')
-              : 'Bespoke Tailoring & Haute Couture',
-          }));
-
-          setNearbyBoutiques(mappedBoutiques);
-        }
-      } catch (err: any) {
-        console.error('Error fetching Home data from Supabase:', err);
-        setFetchError(err.message || 'Failed to load atelier catalog from Supabase.');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadHomeData();
-  }, []);
-
-  // Autoplay Hero Carousel (4.5s)
-  useEffect(() => {
-    if (isLoading || isPaused) return;
-
-    timerRef.current = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % heroBanners.length);
-    }, 4500);
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isLoading, isPaused]);
-
-  const toggleWishlist = (id: string, title: string) => {
-    setWishlistedIds((prev) => {
-      const exists = prev.includes(id);
-      if (exists) {
-        toast({
-          title: 'Removed from Wishlist',
-          description: `${title} removed from saved items.`,
-          variant: 'info',
-        });
-        return prev.filter((item) => item !== id);
-      } else {
-        toast({
-          title: 'Added to Wishlist',
-          description: `${title} saved to your atelier collection.`,
-          variant: 'success',
-        });
-        return [...prev, id];
-      }
-    });
-  };
-
-  const nextSlide = () => {
-    setCurrentSlide((prev) => (prev + 1) % heroBanners.length);
-  };
-
-  const prevSlide = () => {
-    setCurrentSlide((prev) => (prev - 1 + heroBanners.length) % heroBanners.length);
-  };
+  const curatedOutfits = categoryProducts.slice(0, 4);
 
   return (
-    <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-12 font-inter">
-      {/* Fetch Error Alert State */}
-      {fetchError && (
-        <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 shrink-0" />
-            <span className="text-xs sm:text-sm font-medium">{fetchError}</span>
-          </div>
-          <Button size="sm" variant="ghost" onClick={() => window.location.reload()}>
-            Retry
-          </Button>
-        </div>
-      )}
+    <div className="space-y-16 pb-20 font-inter text-slate-100 bg-[#0F0F14] min-h-screen selection:bg-[#5B2C91]/40">
 
-      {/* 1. Hero Banner Carousel */}
-      <section className="relative">
-        {isLoading ? (
-          <Skeleton variant="rectangular" height={360} className="w-full rounded-3xl" />
-        ) : (
-          <div
-            onMouseEnter={() => setIsPaused(true)}
-            onMouseLeave={() => setIsPaused(false)}
-            className="relative rounded-3xl overflow-hidden shadow-2xl min-h-[360px] sm:min-h-[420px] bg-slate-950 flex items-center"
+      {/* SECTION 1: HERO BANNER */}
+      <section className="relative rounded-3xl overflow-hidden border border-white/10 bg-[#0F0F14] shadow-2xl">
+        <div className="relative min-h-[480px] sm:min-h-[520px] flex items-center p-8 sm:p-16 overflow-hidden">
+          {/* Background Image */}
+          <div className="absolute inset-0 z-0">
+            <img
+              src="https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=1600&q=80"
+              alt="Silk Saree"
+              className="w-full h-full object-cover opacity-30 scale-105"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#0F0F14] via-[#0F0F14]/90 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0F0F14] via-transparent to-transparent" />
+          </div>
+
+          {/* Hero Content Column */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            className="relative z-10 max-w-2xl space-y-8"
           >
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={currentSlide}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                className="absolute inset-0 z-0"
-              >
-                <img
-                  src={heroBanners[currentSlide].image}
-                  alt={heroBanners[currentSlide].title}
-                  className="w-full h-full object-cover object-center opacity-45 transform scale-105 transition-transform duration-1000"
-                />
-                <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/80 to-transparent" />
-              </motion.div>
-            </AnimatePresence>
+            {/* Badge */}
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-mono text-slate-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37]" />
+              <span>South Indian Collection</span>
+            </div>
 
-            {/* Slide Content */}
-            <div className="relative z-10 p-8 sm:p-14 max-w-xl space-y-5 text-white">
-              <motion.div
-                key={`content-${currentSlide}`}
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.1 }}
-                className="space-y-4"
-              >
-                <Badge
-                  variant={
-                    heroBanners[currentSlide].colorScheme === 'gold'
-                      ? 'gold'
-                      : heroBanners[currentSlide].colorScheme === 'rose'
-                      ? 'rose'
-                      : 'primary'
-                  }
-                  dot
+            {/* Headline */}
+            <h1 className="font-poppins text-3xl sm:text-5xl font-extrabold text-white tracking-tight leading-[1.18]">
+              Handcrafted Silk Sarees & Custom Outfits
+            </h1>
+
+            {/* Description */}
+            <p className="text-sm sm:text-base text-slate-300 font-inter leading-relaxed max-w-lg">
+              Explore pure silk sarees, printed kurtis, and wedding lehengas tailored to your exact fit.
+            </p>
+
+            {/* Buttons */}
+            <div className="flex items-center gap-6 pt-2">
+              <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
+                <Button
+                  size="lg"
+                  variant="gold"
+                  onClick={() => navigate('/explore')}
+                  className="rounded-xl shadow-lg shadow-amber-500/10 font-poppins font-bold px-8 py-3.5 text-sm"
+                  rightIcon={<ArrowRight className="w-4 h-4 text-amber-950" />}
                 >
-                  {heroBanners[currentSlide].badge}
-                </Badge>
-                <h1 className="font-poppins text-3xl sm:text-5xl font-extrabold tracking-tight leading-tight">
-                  {heroBanners[currentSlide].title}
-                </h1>
-                <p className="text-xs sm:text-base text-slate-300 font-inter leading-relaxed">
-                  {heroBanners[currentSlide].subtitle}
-                </p>
-                <div className="pt-2">
-                  <Link to={heroBanners[currentSlide].ctaLink}>
-                    <Button
-                      variant={
-                        heroBanners[currentSlide].colorScheme === 'gold'
-                          ? 'gold'
-                          : heroBanners[currentSlide].colorScheme === 'rose'
-                          ? 'rose'
-                          : 'primary'
-                      }
-                      size="lg"
-                      rightIcon={<ArrowRight className="w-4 h-4" />}
-                    >
-                      {heroBanners[currentSlide].ctaText}
-                    </Button>
-                  </Link>
-                </div>
+                  Explore Collection
+                </Button>
               </motion.div>
-            </div>
 
-            {/* Carousel Controls */}
-            <button
-              onClick={prevSlide}
-              className="absolute left-4 z-20 p-2.5 rounded-full bg-slate-900/60 text-white backdrop-blur-md hover:bg-slate-900 transition-all border border-white/10"
-              title="Previous Slide"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <button
-              onClick={nextSlide}
-              className="absolute right-4 z-20 p-2.5 rounded-full bg-slate-900/60 text-white backdrop-blur-md hover:bg-slate-900 transition-all border border-white/10"
-              title="Next Slide"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-
-            {/* Indicators Dots */}
-            <div className="absolute bottom-5 right-6 z-20 flex items-center space-x-2">
-              {heroBanners.map((_, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setCurrentSlide(idx)}
-                  className={`h-2 rounded-full transition-all duration-300 ${
-                    idx === currentSlide ? 'w-8 bg-champagne-gold' : 'w-2 bg-white/40 hover:bg-white'
-                  }`}
-                />
-              ))}
+              <Link
+                to="/design"
+                className="text-xs font-poppins font-semibold text-slate-300 hover:text-purple-300 transition-colors flex items-center gap-1.5 group"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
+                <span>Identify Outfit from Photo</span>
+                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform duration-200" />
+              </Link>
             </div>
-          </div>
-        )}
+          </motion.div>
+        </div>
       </section>
 
-      {/* 2. Today's AI Picks (Live Supabase Query Results) */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-royal-purple/10 dark:bg-royal-purple/20 text-royal-purple dark:text-lavender rounded-xl">
-              <Sparkles className="w-5 h-5 text-champagne-gold" />
-            </div>
-            <div>
-              <h2 className="font-poppins text-xl font-bold text-slate-900 dark:text-slate-100">
-                Today's AI Picks
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Personalized recommendations tailored to your style profile from our Supabase database
-              </p>
-            </div>
+      {/* SECTION 2: SLIM TRUST STRIP */}
+      <section className="py-7 px-8 sm:px-14 rounded-2xl bg-white/[0.02] border border-white/10 text-xs font-poppins font-medium text-slate-300">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          <div className="flex items-center gap-3 justify-center sm:justify-start">
+            <ShieldCheck className="w-4.5 h-4.5 text-[#D4AF37] shrink-0" />
+            <span>100% Pure Handloom Silk</span>
           </div>
-          <Link to="/explore">
-            <Button variant="ghost" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
-              View All
-            </Button>
+
+          <div className="flex items-center gap-3 justify-center">
+            <Award className="w-4.5 h-4.5 text-[#D4AF37] shrink-0" />
+            <span>Verified Expert Tailors</span>
+          </div>
+
+          <div className="flex items-center gap-3 justify-center sm:justify-end">
+            <Scissors className="w-4.5 h-4.5 text-[#D4AF37] shrink-0" />
+            <span>1-on-1 Video Fitting</span>
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 3: RECOMMENDED OUTFITS (Distinct Category Visual Identity Cards) */}
+      <section className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-poppins text-xl sm:text-2xl font-bold text-white tracking-tight">
+              Recommended Outfits
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Top selected sarees, kurtis, and lehengas with distinct category styling
+            </p>
+          </div>
+
+          <Link
+            to="/explore"
+            className="text-xs font-poppins font-bold text-purple-400 hover:text-purple-300 transition-colors flex items-center gap-1 group"
+          >
+            <span>View All</span>
+            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform duration-200" />
           </Link>
         </div>
 
-        {isLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} variant="rectangular" height={280} className="w-full rounded-2xl" />
-            ))}
-          </div>
-        ) : (
-          <div className="flex space-x-5 overflow-x-auto snap-x pb-4 pt-1 no-scrollbar">
-            {aiPicks.map((item) => {
-              const isWish = wishlistedIds.includes(item.id);
-              return (
-                <div key={item.id} className="snap-start shrink-0 w-72 sm:w-80">
-                  <Card hoverEffect className="p-4 space-y-3 h-full flex flex-col justify-between">
-                    <div className="relative rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 h-52 group">
-                      <img
-                        src={item.image}
-                        alt={item.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                      {/* AI Match Score Badge */}
-                      <div className="absolute top-3 left-3">
-                        <Badge variant="primary" dot>
-                          {item.matchScore}% Match
-                        </Badge>
-                      </div>
+        {/* 4 Category Cards Grid with Distinct Theme Overlays & Hover Lift (-6px) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {curatedOutfits.map((item) => {
+            const theme = getCategoryTheme(item.category || item.title);
+            return (
+              <motion.div
+                key={item.id}
+                whileHover={{ y: -6 }}
+                transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <Card className={`p-3.5 space-y-3 bg-[#15161E] border ${theme.border} ${theme.hoverBorder} ${theme.glow} transition-all duration-300 group relative`}>
+                  {/* Image Frame with Category Gradient Scrim & View Details Hover */}
+                  <div className="relative rounded-xl overflow-hidden bg-slate-900 h-64">
+                    <img
+                      src={item.image}
+                      alt={item.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
 
-                      {/* Wishlist Button */}
-                      <button
-                        onClick={() => toggleWishlist(item.id, item.title)}
-                        className={`absolute top-3 right-3 p-2 rounded-full backdrop-blur-md shadow-md transition-colors ${
-                          isWish
-                            ? 'bg-rose-gold text-white'
-                            : 'bg-white/80 dark:bg-slate-900/80 text-slate-600 dark:text-slate-200 hover:text-rose-gold'
-                        }`}
-                      >
-                        <Heart className={`w-4 h-4 ${isWish ? 'fill-current' : ''}`} />
-                      </button>
-                    </div>
+                    {/* Dark Scrim with Category Tint */}
+                    <div className={`absolute inset-0 bg-gradient-to-t ${theme.gradientOverlay} opacity-80 group-hover:opacity-95 transition-opacity duration-300`} />
 
-                    <div className="space-y-1">
-                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 font-poppins">
-                        {item.designer}
+                    {/* Category Badge Pill */}
+                    <div className="absolute top-2.5 left-2.5 z-10">
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold border backdrop-blur-md ${theme.badgeBg} ${theme.badgeText} flex items-center gap-1.5`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${theme.accentDot}`} />
+                        {item.category || 'Apparel'}
                       </span>
-                      <h3 className="font-poppins font-semibold text-sm text-slate-900 dark:text-slate-100 truncate">
-                        {item.title}
-                      </h3>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 italic line-clamp-1">
-                        "{item.reason}"
-                      </p>
                     </div>
 
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
-                      <div className="flex items-baseline gap-2">
-                        <span className="font-poppins font-bold text-base text-royal-purple dark:text-lavender">
-                          ${item.price}
-                        </span>
-                        {item.originalPrice && (
-                          <span className="text-xs text-slate-400 line-through">
-                            ${Math.round(item.originalPrice)}
-                          </span>
-                        )}
-                      </div>
-                      <Button size="sm" variant="secondary" leftIcon={<ShoppingBag className="w-3.5 h-3.5" />}>
-                        Bag
+                    {/* Hover Overlay Button */}
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-250 flex items-center justify-center z-10">
+                      <Button
+                        size="sm"
+                        variant="gold"
+                        onClick={() => navigate('/explore')}
+                        className="font-poppins font-bold text-xs rounded-xl shadow-lg"
+                      >
+                        View Details
                       </Button>
                     </div>
-                  </Card>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
 
-      {/* 3. Trending Collections (Grid with Hover Zoom-on-Image Effect) */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="font-poppins text-xl font-bold text-slate-900 dark:text-slate-100">
-            Trending Lookbooks
-          </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Curated style collections from top rated Supabase outfits
-          </p>
-        </div>
-
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} variant="rectangular" height={320} className="w-full rounded-2xl" />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {trendingCollections.map((col) => (
-              <Card key={col.id} hoverEffect className="overflow-hidden p-0 group">
-                <div className="relative h-56 overflow-hidden">
-                  <img
-                    src={col.image}
-                    alt={col.title}
-                    className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-700 ease-out"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent" />
-                  <div className="absolute top-4 left-4">
-                    <Badge variant="gold" dot>{col.tag}</Badge>
+                    <button
+                      onClick={() => {
+                        useWishlistStore.getState().addToWishlist({
+                          outfit_id: item.id,
+                          title: item.title,
+                          price: item.price,
+                          image_url: item.image,
+                          designer: item.brand,
+                        });
+                        toast({ title: 'Saved to Wishlist ❤️', description: `"${item.title}" saved.`, variant: 'success' });
+                      }}
+                      className="absolute top-2.5 right-2.5 p-2 rounded-full bg-slate-900/80 backdrop-blur-md text-slate-300 hover:text-pink-400 transition-colors z-10"
+                    >
+                      <Heart className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  <div className="absolute bottom-4 left-4 right-4 text-white">
-                    <span className="text-[10px] font-mono opacity-80 uppercase tracking-widest block">
-                      {col.itemCount} Garments
+
+                  <div className="space-y-1 relative z-10">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 font-poppins">
+                      {item.brand}
                     </span>
-                    <h3 className="font-poppins font-bold text-lg leading-snug">{col.title}</h3>
+                    <h3 className="font-poppins font-semibold text-xs text-white truncate">
+                      {item.title}
+                    </h3>
                   </div>
-                </div>
-                <div className="p-5 space-y-3">
-                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                    {col.description}
-                  </p>
-                  <Link to="/explore" className="inline-block w-full">
-                    <Button variant="outline" size="sm" className="w-full" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
-                      Explore Lookbook
+
+                  <div className="flex items-center justify-between pt-2 border-t border-white/10 relative z-10">
+                    <span className="font-poppins font-bold text-sm text-white">
+                      ₹{item.price.toLocaleString()}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        useCartStore.getState().addToCart({
+                          outfit_id: item.id,
+                          title: item.title,
+                          price: item.price,
+                          image_url: item.image,
+                          designer: item.brand,
+                        });
+                        toast({ title: 'Added to Bag 🛍️', description: `"${item.title}" added to bag.`, variant: 'success' });
+                      }}
+                      leftIcon={<ShoppingBag className="w-3.5 h-3.5" />}
+                    >
+                      Add
                     </Button>
-                  </Link>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
+                  </div>
+                </Card>
+              </motion.div>
+            );
+          })}
+        </div>
       </section>
 
-      {/* 4. Wedding Specials Banner Strip */}
-      <section>
-        {isLoading ? (
-          <Skeleton variant="rectangular" height={180} className="w-full rounded-3xl" />
-        ) : (
-          <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-amber-950 via-purple-950 to-slate-950 text-white p-8 sm:p-10 shadow-xl border border-amber-500/20 flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="space-y-2 max-w-xl text-center md:text-left">
-              <Badge variant="gold" dot>Bridal & Wedding Salon</Badge>
-              <h2 className="font-poppins text-2xl sm:text-3xl font-extrabold text-amber-100 flex items-center justify-center md:justify-start gap-2.5">
-                <Crown className="w-7 h-7 text-champagne-gold" />
-                Royal Bridal Fittings & Custom Veils
-              </h2>
-              <p className="text-xs sm:text-sm text-amber-100/80 font-inter">
-                Schedule a 1-on-1 private consultation with our master bridal tailors for bespoke wedding gowns.
-              </p>
+      {/* SECTION 4: WEDDING OUTFITS BANNER */}
+      <section className="relative rounded-3xl overflow-hidden border border-amber-500/20 bg-gradient-to-r from-[#1A140B] via-[#0F0F14] to-[#1A140B] p-8 sm:p-12 shadow-2xl">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+          <div className="space-y-4 max-w-xl">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-[#D4AF37] text-xs font-mono">
+              <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" />
+              <span>Bridal Collection</span>
             </div>
-            <Link to="/explore?occasion=Wedding" className="shrink-0">
-              <Button variant="gold" size="lg" rightIcon={<ArrowRight className="w-4 h-4" />}>
-                Explore Bridal Suite
-              </Button>
-            </Link>
-          </div>
-        )}
-      </section>
 
-      {/* 5. Nearby Boutiques (Loaded Live from Supabase boutiques Table) */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="font-poppins text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <MapPin className="w-5 h-5 text-rose-gold" />
-              Nearby Atelier Boutiques
+            <h2 className="font-poppins text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+              South Indian Wedding Outfits
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Partner luxury salons from our Supabase database</p>
+
+            <p className="text-xs sm:text-sm text-slate-300 font-inter leading-relaxed">
+              Bridal silk sarees, embroidered lehengas, and groom blazers made to your custom measurements.
+            </p>
+
+            <div className="pt-2">
+              <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }} className="inline-block">
+                <Button
+                  size="md"
+                  variant="gold"
+                  onClick={() => navigate('/wedding')}
+                  className="rounded-xl shadow-lg font-poppins font-bold px-6 text-xs"
+                  rightIcon={<ArrowRight className="w-4 h-4 text-amber-950" />}
+                >
+                  See Wedding Collection
+                </Button>
+              </motion.div>
+            </div>
+          </div>
+
+          <div className="w-full md:w-80 h-56 rounded-2xl overflow-hidden shrink-0 border border-white/10">
+            <img
+              src="https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?auto=format&fit=crop&w=800&q=80"
+              alt="Bridal Outfit"
+              className="w-full h-full object-cover"
+            />
           </div>
         </div>
-
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} variant="rectangular" height={220} className="w-full rounded-2xl" />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {nearbyBoutiques.map((bt) => (
-              <Card key={bt.id} hoverEffect className="p-4 space-y-3">
-                <div className="relative rounded-xl overflow-hidden h-36 bg-slate-100 dark:bg-slate-800">
-                  <img src={bt.image} alt={bt.name} className="w-full h-full object-cover" />
-                  <div className="absolute top-3 left-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-2.5 py-1 rounded-full text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1 shadow-sm">
-                    <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                    <span>{bt.rating}</span>
-                    <span className="text-slate-400 font-normal">({bt.reviewCount})</span>
-                  </div>
-                  <div className="absolute top-3 right-3">
-                    <Badge variant={bt.isOpen ? 'primary' : 'grey'}>
-                      {bt.isOpen ? 'Open Now' : 'Closed'}
-                    </Badge>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                    <span className="flex items-center gap-1 font-mono text-[11px]">
-                      <MapPin className="w-3.5 h-3.5 text-rose-gold" /> {bt.distance} away
-                    </span>
-                    <span className="flex items-center gap-1 font-mono text-[11px]">
-                      <Clock className="w-3.5 h-3.5" /> 10 AM - 8 PM
-                    </span>
-                  </div>
-                  <CardTitle className="text-base">{bt.name}</CardTitle>
-                  <CardDescription>{bt.specialty}</CardDescription>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
       </section>
 
-      {/* 6. Recently Viewed Row */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Eye className="w-5 h-5 text-royal-purple dark:text-lavender" />
-            <h2 className="font-poppins text-lg font-bold text-slate-900 dark:text-slate-100">
-              Recently Viewed
-            </h2>
-          </div>
+      {/* SECTION 5: FOOTER */}
+      <footer className="pt-8 border-t border-white/10 text-xs font-inter text-slate-400 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <p>© 2026 Fashionista. All rights reserved.</p>
+        <div className="flex items-center gap-6">
+          <Link to="/explore" className="hover:text-white transition-colors">Explore</Link>
+          <Link to="/studio" className="hover:text-white transition-colors">3D Fitting</Link>
+          <Link to="/wedding" className="hover:text-white transition-colors">Wedding</Link>
+          <Link to="/profile" className="hover:text-white transition-colors">Profile</Link>
         </div>
+      </footer>
 
-        {isLoading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} variant="rectangular" height={120} className="w-full rounded-2xl" />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {recentlyViewed.map((rv) => (
-              <Card key={rv.id} hoverEffect className="p-3 flex items-center space-x-3">
-                <img
-                  src={rv.image}
-                  alt={rv.title}
-                  className="w-14 h-14 rounded-xl object-cover shrink-0 bg-slate-100 dark:bg-slate-800"
-                />
-                <div className="overflow-hidden space-y-0.5">
-                  <span className="text-[10px] text-slate-400 block font-mono">{rv.brand}</span>
-                  <h4 className="font-poppins font-semibold text-xs text-slate-900 dark:text-slate-100 truncate">
-                    {rv.title}
-                  </h4>
-                  <span className="font-poppins font-bold text-xs text-royal-purple dark:text-lavender block">
-                    ${rv.price}
-                  </span>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
-      </section>
     </div>
   );
 };

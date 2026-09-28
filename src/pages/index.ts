@@ -9,3 +9,7 @@ export * from './Login';
 export * from './Signup';
 export * from './StyleGuide';
 export * from './BoutiqueDashboard';
+export * from './BoutiqueStorefront';
+export * from './Studio';
+
+

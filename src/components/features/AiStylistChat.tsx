@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, X, Send } from 'lucide-react';
-import { Avatar } from '../ui';
+import { Sparkles, X, Send, Video } from 'lucide-react';
+import { Avatar, Button } from '../ui';
+import { ConsultationBookingModal } from './ConsultationBookingModal';
 import { useAuthStore } from '../../store/useAuthStore';
 import { supabase } from '../../lib/supabaseClient';
 import { generateStylistResponse } from '../../lib/aiService';
@@ -11,6 +12,7 @@ export interface ChatMessage {
   sender: 'user' | 'ai';
   text: string;
   timestamp: string;
+  hasConsultationAction?: boolean;
 }
 
 export const AiStylistChat: React.FC = () => {
@@ -18,13 +20,18 @@ export const AiStylistChat: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [inputPrompt, setInputPrompt] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [isBookingOpen, setIsBookingOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  // Tracks content strings of messages we just inserted optimistically.
+  // Realtime will pick up the same INSERT — we use this set to skip those
+  // echoes and avoid the double-reply bug.
+  const recentlySentContents = useRef<Set<string>>(new Set());
 
   const defaultWelcomeMessage: ChatMessage = {
     id: 'welcome-1',
     sender: 'ai',
-    text: 'Hello darling! I am your personal Fashionista AI Stylist. How can I help elevate your wardrobe today?',
+    text: `Hello ${user?.name ? user.name.split(' ')[0] : 'darling'}! I am your personal Fashionista AI Stylist. Ask me about wedding outfits, budget recreation tiers, fabric recommendations, or skin-tone palettes!`,
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
   };
 
@@ -32,9 +39,9 @@ export const AiStylistChat: React.FC = () => {
 
   const quickReplies = [
     'Suggest wedding outfits',
-    'Suggest under $1000',
-    'What goes with velvet?',
-    'Summer runway trends',
+    'Suggest under ₹5000 budget',
+    'Which colors match warm skin tone?',
+    'Book 1-on-1 designer consultation',
   ];
 
   const scrollToBottom = () => {
@@ -49,7 +56,6 @@ export const AiStylistChat: React.FC = () => {
 
     const fetchHistoryAndSubscribe = async () => {
       try {
-        // Fetch existing database history for user
         const { data: dbMessages, error } = await supabase
           .from('chat_messages')
           .select('*')
@@ -65,13 +71,15 @@ export const AiStylistChat: React.FC = () => {
               hour: '2-digit',
               minute: '2-digit',
             }),
+            hasConsultationAction:
+              msg.content.toLowerCase().includes('consultation') ||
+              msg.content.toLowerCase().includes('schedule'),
           }));
           setMessages(loadedMsgs);
         } else {
           setMessages([defaultWelcomeMessage]);
         }
 
-        // Subscribe to Postgres INSERT changes filtered by current user_id
         channel = supabase
           .channel(`chat_messages:${user.id}`)
           .on(
@@ -84,6 +92,16 @@ export const AiStylistChat: React.FC = () => {
             },
             (payload) => {
               const newRow = payload.new;
+
+              // ── Double-reply guard ──────────────────────────────────────
+              // We insert messages optimistically in handleSendMessage().
+              // Realtime fires for those same INSERTs and would append them
+              // a second time. Skip any content we already added ourselves.
+              if (recentlySentContents.current.has(newRow.content)) {
+                recentlySentContents.current.delete(newRow.content);
+                return;
+              }
+
               const newMsg: ChatMessage = {
                 id: newRow.id,
                 sender: newRow.role === 'user' ? 'user' : 'ai',
@@ -92,9 +110,13 @@ export const AiStylistChat: React.FC = () => {
                   hour: '2-digit',
                   minute: '2-digit',
                 }),
+                hasConsultationAction:
+                  newRow.content.toLowerCase().includes('consultation') ||
+                  newRow.content.toLowerCase().includes('schedule'),
               };
 
               setMessages((prev) => {
+                // Secondary guard: skip if id already present (cross-device reload scenario)
                 if (prev.some((m) => m.id === newMsg.id)) return prev;
                 return [...prev, newMsg];
               });
@@ -108,7 +130,6 @@ export const AiStylistChat: React.FC = () => {
 
     fetchHistoryAndSubscribe();
 
-    // Clean up channel subscription on drawer close or unmount
     return () => {
       if (channel) {
         supabase.removeChannel(channel);
@@ -129,13 +150,11 @@ export const AiStylistChat: React.FC = () => {
     const trimmed = messageText.trim();
     if (!textToSend) setInputPrompt('');
 
-    // Prepare full conversation history for AI API request
     const historyForAi = messages.map((m) => ({
       role: m.sender === 'user' ? ('user' as const) : ('assistant' as const),
       content: m.text,
     }));
 
-    // Optimistic message for guest/display
     const tempUserId = Math.random().toString(36).substring(2, 9);
     const optimisticUserMsg: ChatMessage = {
       id: tempUserId,
@@ -149,37 +168,48 @@ export const AiStylistChat: React.FC = () => {
 
     if (user) {
       try {
-        // Insert user message to Supabase chat_messages
+        // Register content BEFORE the INSERT so the Realtime echo is caught
+        recentlySentContents.current.add(trimmed);
         await supabase.from('chat_messages').insert({
           user_id: user.id,
           role: 'user',
           content: trimmed,
         });
       } catch (err) {
+        recentlySentContents.current.delete(trimmed);
         console.error('Failed to persist user message to Supabase:', err);
       }
     }
 
     try {
-      // Call AI Service with full conversation history
-      const aiReplyText = await generateStylistResponse(historyForAi, trimmed);
+      // Generate Stylist Response with personalized user name & delay
+      const aiReply = await generateStylistResponse(historyForAi, trimmed, {
+        name: user?.name,
+        role: user?.role,
+      });
+
+      const optimisticAiMsg: ChatMessage = {
+        id: Math.random().toString(36).substring(2, 9),
+        sender: 'ai',
+        text: aiReply.text,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        hasConsultationAction: aiReply.hasConsultationAction,
+      };
+      setMessages((prev) => [...prev, optimisticAiMsg]);
 
       if (user) {
-        // Insert AI assistant response to Supabase chat_messages (Realtime will broadcast)
-        await supabase.from('chat_messages').insert({
-          user_id: user.id,
-          role: 'assistant',
-          content: aiReplyText,
-        });
-      } else {
-        // Guest mode fallback
-        const optimisticAiMsg: ChatMessage = {
-          id: Math.random().toString(36).substring(2, 9),
-          sender: 'ai',
-          text: aiReplyText,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        };
-        setMessages((prev) => [...prev, optimisticAiMsg]);
+        try {
+          // Register AI reply content BEFORE the INSERT so Realtime echo is caught
+          recentlySentContents.current.add(aiReply.text);
+          await supabase.from('chat_messages').insert({
+            user_id: user.id,
+            role: 'assistant',
+            content: aiReply.text,
+          });
+        } catch (dbErr) {
+          recentlySentContents.current.delete(aiReply.text);
+          console.warn('Background Chat DB insert error:', dbErr);
+        }
       }
     } catch (err) {
       console.error('Error generating AI response:', err);
@@ -198,7 +228,6 @@ export const AiStylistChat: React.FC = () => {
           onClick={() => setIsOpen(!isOpen)}
           className="relative group p-4 rounded-full bg-gradient-to-r from-royal-purple to-purple-900 text-white shadow-2xl flex items-center justify-center border border-white/20 focus:outline-none"
         >
-          {/* Pulsing Glow Ring */}
           <span className="absolute inset-0 rounded-full bg-royal-purple/50 animate-ping pointer-events-none opacity-75" />
 
           {isOpen ? (
@@ -223,7 +252,7 @@ export const AiStylistChat: React.FC = () => {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
             transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-            className="fixed bottom-36 md:bottom-24 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-96 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col h-[500px] font-inter"
+            className="fixed bottom-36 md:bottom-24 right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] sm:w-96 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col h-[520px] font-inter"
           >
             {/* Header */}
             <div className="p-4 bg-gradient-to-r from-royal-purple via-purple-900 to-slate-950 text-white flex items-center justify-between shadow-md">
@@ -237,7 +266,7 @@ export const AiStylistChat: React.FC = () => {
                     <Sparkles className="w-3.5 h-3.5 text-champagne-gold" />
                   </h3>
                   <span className="text-[10px] text-slate-300 font-mono flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Powered by Claude AI
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" /> Live Personal Wardrobe Advisor
                   </span>
                 </div>
               </div>
@@ -261,13 +290,29 @@ export const AiStylistChat: React.FC = () => {
                   className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
-                    className={`max-w-[82%] p-3.5 rounded-2xl text-xs space-y-1 ${
+                    className={`max-w-[85%] p-3.5 rounded-2xl text-xs space-y-2 ${
                       msg.sender === 'user'
                         ? 'bg-royal-purple text-white rounded-br-none shadow-sm'
                         : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-bl-none border border-slate-100 dark:border-slate-700/60 shadow-sm'
                     }`}
                   >
                     <p className="leading-relaxed font-inter">{msg.text}</p>
+
+                    {/* Interactive Consultation CTA Button inside Chat */}
+                    {msg.hasConsultationAction && msg.sender === 'ai' && (
+                      <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60">
+                        <Button
+                          variant="gold"
+                          size="sm"
+                          className="w-full text-xs shadow-md py-1.5"
+                          onClick={() => setIsBookingOpen(true)}
+                          leftIcon={<Video className="w-3.5 h-3.5 text-amber-950 animate-pulse" />}
+                        >
+                          Book 1-on-1 Designer Consultation
+                        </Button>
+                      </div>
+                    )}
+
                     <span
                       className={`text-[9px] block text-right font-mono ${
                         msg.sender === 'user' ? 'text-lavender/70' : 'text-slate-400'
@@ -336,7 +381,7 @@ export const AiStylistChat: React.FC = () => {
                 value={inputPrompt}
                 onChange={(e) => setInputPrompt(e.target.value)}
                 placeholder="Ask AI Stylist anything..."
-                className="flex-1 px-3.5 py-2 bg-soft-grey dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-royal-purple/20"
+                className="flex-1 px-3.5 py-2 bg-soft-grey dark:bg-slate-800 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-royal-purple/20 font-inter"
               />
               <button
                 type="submit"
@@ -349,6 +394,17 @@ export const AiStylistChat: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Consultation Booking Modal from AI Stylist Chat */}
+      <ConsultationBookingModal
+        isOpen={isBookingOpen}
+        onClose={() => setIsBookingOpen(false)}
+        boutiqueOrDesigner={{
+          name: 'Atelier Master Designer',
+          specialty: '1-on-1 AI Stylist Direct Consultation',
+        }}
+        onSuccess={() => setIsBookingOpen(false)}
+      />
     </>
   );
 };

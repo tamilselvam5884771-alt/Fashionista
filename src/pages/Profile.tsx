@@ -13,10 +13,14 @@ import {
   Truck,
   Scissors,
   Check,
+  Video,
+  Clock,
 } from 'lucide-react';
 import { Button, Card, CardTitle, Avatar, Badge, Tabs, Skeleton, useToast } from '../components/ui';
+import { VideoCallModal } from '../components/features';
 import { useAuthStore } from '../store/useAuthStore';
 import { supabase } from '../lib/supabaseClient';
+import type { Consultation } from '../types';
 
 export const ORDER_STAGES = [
   { id: 'design_approval', label: 'Design Approval', icon: Sparkles },
@@ -38,6 +42,11 @@ export const Profile: React.FC = () => {
   const [isLoadingOrders, setIsLoadingOrders] = useState(true);
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
 
+  // Consultations & Video Call State
+  const [consultations, setConsultations] = useState<Consultation[]>([]);
+  const [isLoadingConsultations, setIsLoadingConsultations] = useState(true);
+  const [activeVideoCallConsultation, setActiveVideoCallConsultation] = useState<Consultation | null>(null);
+
   // 1. Fetch User Orders from Supabase & Subscribe to Realtime Updates
   useEffect(() => {
     if (!user) return;
@@ -47,7 +56,6 @@ export const Profile: React.FC = () => {
     const fetchOrdersAndSubscribe = async () => {
       setIsLoadingOrders(true);
       try {
-        // Fetch orders for current user
         const { data: dbOrders, error } = await supabase
           .from('orders')
           .select('*, outfits(title, image_url, price, category)')
@@ -59,7 +67,6 @@ export const Profile: React.FC = () => {
         } else if (dbOrders && dbOrders.length > 0) {
           setOrders(dbOrders);
         } else {
-          // If user has no orders, create an initial demo order so they can experience Realtime!
           const { data: outfitSample } = await supabase
             .from('outfits')
             .select('id, title, price, image_url')
@@ -84,7 +91,6 @@ export const Profile: React.FC = () => {
           }
         }
 
-        // Subscribe to Supabase Realtime updates on 'orders' table filtered by user_id
         channel = supabase
           .channel(`orders:${user.id}`)
           .on(
@@ -105,7 +111,6 @@ export const Profile: React.FC = () => {
                       ? {
                           ...ord,
                           ...updatedRow,
-                          // Keep outfit details if not present in payload
                           outfits: ord.outfits,
                         }
                       : ord
@@ -136,11 +141,100 @@ export const Profile: React.FC = () => {
 
     fetchOrdersAndSubscribe();
 
-    // Clean up channel subscription on component unmount
     return () => {
       if (channel) {
         supabase.removeChannel(channel);
       }
+    };
+  }, [user]);
+
+  // 2. Fetch User Consultations & Subscribe to Realtime Updates
+  useEffect(() => {
+    if (!user) return;
+
+    let channel: any = null;
+
+    const fetchConsultationsAndSubscribe = async () => {
+      setIsLoadingConsultations(true);
+      try {
+        const { data, error } = await supabase
+          .from('consultations')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('scheduled_at', { ascending: true });
+
+        if (error) {
+          console.error('Error fetching consultations:', error);
+        } else if (data && data.length > 0) {
+          setConsultations(data as Consultation[]);
+        } else {
+          // Seed an initial demo consultation if user has none
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          tomorrow.setHours(11, 0, 0, 0);
+
+          const demoPayload = {
+            user_id: user.id,
+            designer_name: 'Atelier Saint-Germain',
+            designer_avatar:
+              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80',
+            scheduled_at: tomorrow.toISOString(),
+            status: 'scheduled',
+            notes: 'Initial 3D fitting & silk fabric selection review',
+          };
+
+          const { data: inserted } = await supabase
+            .from('consultations')
+            .insert(demoPayload)
+            .select()
+            .single();
+
+          if (inserted) {
+            setConsultations([inserted as Consultation]);
+          }
+        }
+
+        channel = supabase
+          .channel(`consultations:${user.id}`)
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'consultations',
+              filter: `user_id=eq.${user.id}`,
+            },
+            (payload) => {
+              if (payload.eventType === 'INSERT') {
+                setConsultations((prev) => [payload.new as Consultation, ...prev]);
+                toast({
+                  title: 'New Consultation Scheduled! 📅',
+                  description: `Appointment with ${payload.new.designer_name} confirmed.`,
+                  variant: 'success',
+                });
+              } else if (payload.eventType === 'UPDATE') {
+                setConsultations((prev) =>
+                  prev.map((item) =>
+                    item.id === payload.new.id ? (payload.new as Consultation) : item
+                  )
+                );
+              } else if (payload.eventType === 'DELETE') {
+                setConsultations((prev) => prev.filter((item) => item.id !== payload.old.id));
+              }
+            }
+          )
+          .subscribe();
+      } catch (err) {
+        console.error('Realtime consultations error:', err);
+      } finally {
+        setIsLoadingConsultations(false);
+      }
+    };
+
+    fetchConsultationsAndSubscribe();
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
     };
   }, [user]);
 
@@ -182,6 +276,119 @@ export const Profile: React.FC = () => {
   };
 
   const profileTabs = [
+    {
+      id: 'consultations',
+      label: 'Upcoming Consultations',
+      icon: <Video className="w-4 h-4 text-emerald-500" />,
+      content: (
+        <div className="space-y-6">
+          {isLoadingConsultations ? (
+            <div className="space-y-4">
+              {[1, 2].map((i) => (
+                <Skeleton key={i} variant="rectangular" height={160} className="w-full rounded-2xl" />
+              ))}
+            </div>
+          ) : consultations.length === 0 ? (
+            <Card className="p-8 text-center space-y-4">
+              <Video className="w-12 h-12 mx-auto text-slate-400" />
+              <CardTitle>No Scheduled Consultations</CardTitle>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                Book a 1-on-1 live consultation with our master designers or ateliers.
+              </p>
+              <Button size="sm" variant="primary" onClick={() => navigate('/design')}>
+                Book Live Consultation
+              </Button>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {consultations.map((item) => {
+                const scheduledDate = new Date(item.scheduled_at);
+                const isScheduled = item.status === 'scheduled';
+
+                return (
+                  <Card key={item.id} hoverEffect className="p-5 space-y-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={
+                            item.designer_avatar ||
+                            'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80'
+                          }
+                          alt={item.designer_name}
+                          className="w-12 h-12 rounded-2xl object-cover ring-2 ring-royal-purple/20"
+                        />
+                        <div className="space-y-0.5">
+                          <h4 className="font-poppins font-bold text-base text-slate-900 dark:text-slate-100">
+                            {item.designer_name}
+                          </h4>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 font-mono flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5 text-rose-gold" />
+                            {scheduledDate.toLocaleDateString('en-US', {
+                              weekday: 'short',
+                              month: 'short',
+                              day: 'numeric',
+                            })}{' '}
+                            •{' '}
+                            {scheduledDate.toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </p>
+                        </div>
+                      </div>
+
+                      <Badge
+                        variant={
+                          item.status === 'completed'
+                            ? 'grey'
+                            : item.status === 'cancelled'
+                            ? 'rose'
+                            : 'gold'
+                        }
+                        dot={isScheduled}
+                      >
+                        {item.status.toUpperCase()}
+                      </Badge>
+                    </div>
+
+                    {item.notes && (
+                      <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-xs text-slate-600 dark:text-slate-300 font-inter">
+                        <span className="font-bold text-slate-400 block text-[10px] uppercase mb-0.5">
+                          Fitting Notes
+                        </span>
+                        {item.notes}
+                      </div>
+                    )}
+
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                      <span className="text-[11px] text-slate-400 flex items-center gap-1 font-mono">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                        Virtual Fitting Room
+                      </span>
+
+                      {isScheduled ? (
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={() => setActiveVideoCallConsultation(item)}
+                          leftIcon={<Video className="w-4 h-4 animate-pulse" />}
+                        >
+                          Join Call
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="ghost" disabled>
+                          Call Ended
+                        </Button>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ),
+    },
     {
       id: 'orders',
       label: 'My Orders & Realtime Tracking',
@@ -374,13 +581,70 @@ export const Profile: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
+          <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
+            <Button
+              variant="gold"
+              onClick={() => navigate('/design')}
+              className="font-poppins font-bold text-xs shadow-md rounded-xl"
+              leftIcon={<Sparkles className="w-4 h-4 text-amber-950" />}
+            >
+              Identify My Outfit
+            </Button>
+          </motion.div>
+
           <Button variant="outline" onClick={handleLogout} leftIcon={<LogOut className="w-4 h-4" />}>
             Sign Out
           </Button>
         </div>
       </Card>
 
+      {/* Identify My Outfit Feature Banner Card */}
+      <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
+        <Card
+          onClick={() => navigate('/design')}
+          className="p-5 bg-gradient-to-r from-purple-950/40 via-slate-900 to-purple-950 border border-purple-500/30 hover:border-purple-500/70 cursor-pointer flex flex-col sm:flex-row items-center justify-between gap-4 transition-colors group rounded-3xl"
+        >
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-2xl bg-purple-500/20 text-purple-400 group-hover:bg-[#5B2C91] group-hover:text-white transition-colors">
+              <Sparkles className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="font-poppins font-bold text-base text-white group-hover:text-purple-300 transition-colors">
+                Have an Outfit Photo? Identify My Outfit
+              </h3>
+              <p className="text-xs text-slate-300">
+                Upload a photo of any outfit to identify the style, fabric, and match expert tailors.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="gold"
+            size="sm"
+            className="rounded-xl font-poppins font-bold text-xs shrink-0"
+            rightIcon={<ArrowRight className="w-4 h-4 text-amber-950 group-hover:translate-x-1 transition-transform" />}
+          >
+            Upload Photo Now
+          </Button>
+        </Card>
+      </motion.div>
+
       <Tabs items={profileTabs} />
+
+      {/* Video Call Room Modal */}
+      <VideoCallModal
+        isOpen={Boolean(activeVideoCallConsultation)}
+        onClose={() => setActiveVideoCallConsultation(null)}
+        consultation={activeVideoCallConsultation}
+        onCallEnded={() => {
+          if (activeVideoCallConsultation) {
+            setConsultations((prev) =>
+              prev.map((c) =>
+                c.id === activeVideoCallConsultation.id ? { ...c, status: 'completed' } : c
+              )
+            );
+          }
+        }}
+      />
     </div>
   );
 };

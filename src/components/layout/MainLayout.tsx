@@ -3,7 +3,7 @@ import { useLocation, useOutlet } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Navbar } from './Navbar';
 import { BottomNav } from './BottomNav';
-import { AiStylistChat } from '../features';
+import { AiStylistChat, CartDrawer } from '../features';
 
 export const MainLayout: React.FC = () => {
   const location = useLocation();
@@ -32,6 +32,9 @@ export const MainLayout: React.FC = () => {
 
       {/* Persistent Global AI Stylist FAB & Drawer */}
       <AiStylistChat />
+
+      {/* Persistent Global Cart Drawer */}
+      <CartDrawer />
 
       {/* Bottom Mobile Navigation Bar */}
       <BottomNav />

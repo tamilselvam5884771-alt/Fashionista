@@ -16,6 +16,8 @@ import {
   Signup,
   StyleGuide,
   BoutiqueDashboard,
+  BoutiqueStorefront,
+  Studio,
 } from './pages';
 
 export function App() {
@@ -75,12 +77,17 @@ export function App() {
             />
 
             {/* Public Routes */}
+            <Route path="/boutique/:id" element={<BoutiqueStorefront />} />
             <Route path="/wishlist" element={<Wishlist />} />
             <Route path="/wallet" element={<Wallet />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/style-guide" element={<StyleGuide />} />
           </Route>
+
+          {/* Dedicated 3D Parametric Studio Workstation Routes */}
+          <Route path="/studio" element={<Studio />} />
+          <Route path="/3d-designer" element={<Studio />} />
 
           {/* Dedicated Boutique Owner Dashboard Route */}
           <Route

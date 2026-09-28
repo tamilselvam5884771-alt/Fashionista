@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Crown,
@@ -8,8 +9,10 @@ import {
   DollarSign,
   Users,
   ShieldCheck,
+  Video,
 } from 'lucide-react';
 import { Button, Card, CardTitle, Badge, Tabs, useToast } from '../components/ui';
+import { ConsultationBookingModal } from '../components/features';
 import { weddingPackages, moodboardPins } from '../lib/mockData';
 
 export const Wedding: React.FC = () => {
@@ -24,6 +27,7 @@ export const Wedding: React.FC = () => {
 
   // Moodboard Pins Saved State
   const [savedPinIds, setSavedPinIds] = useState<string[]>(['pin-1']);
+  const [bookingPackage, setBookingPackage] = useState<any | null>(null);
 
   // Calculate Relative Timeline Dates
   const timelineEvents = useMemo(() => {
@@ -96,21 +100,22 @@ export const Wedding: React.FC = () => {
                 {pkg.description}
               </p>
               <div className="text-[11px] font-mono text-slate-400">
-                Fabric: {pkg.fabric} • {pkg.designer}
+                Fabric: {pkg.fabric} •{' '}
+                <Link
+                  to={`/boutique/${encodeURIComponent(pkg.designer)}`}
+                  className="text-royal-purple dark:text-lavender font-bold underline hover:text-amber-500 transition-colors"
+                >
+                  {pkg.designer}
+                </Link>
               </div>
               <Button
                 variant="gold"
                 size="sm"
                 className="w-full mt-2"
-                onClick={() =>
-                  toast({
-                    title: 'Fitting Consultation Reserved',
-                    description: `Reserved ${pkg.title} package fitting session.`,
-                    variant: 'success',
-                  })
-                }
+                onClick={() => setBookingPackage(pkg)}
+                leftIcon={<Video className="w-3.5 h-3.5" />}
               >
-                Reserve Package
+                Book Bridal Consultation
               </Button>
             </div>
           </Card>
@@ -371,6 +376,21 @@ export const Wedding: React.FC = () => {
           })}
         </div>
       </section>
+
+      {/* Consultation Booking Modal for Bridal Packages */}
+      <ConsultationBookingModal
+        isOpen={Boolean(bookingPackage)}
+        onClose={() => setBookingPackage(null)}
+        boutiqueOrDesigner={
+          bookingPackage
+            ? {
+                name: bookingPackage.designer,
+                specialty: `${bookingPackage.title} Bridal Consultation`,
+              }
+            : undefined
+        }
+        onSuccess={() => setBookingPackage(null)}
+      />
     </div>
   );
 };

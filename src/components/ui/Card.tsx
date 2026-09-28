@@ -14,9 +14,9 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
         ref={ref}
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
         whileHover={hoverEffect ? { y: -4, transition: { duration: 0.2 } } : undefined}
-        className={`bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800/80 shadow-sm hover:shadow-md transition-shadow p-6 ${className}`}
+        className={`bg-white dark:bg-slate-900/90 backdrop-blur-sm rounded-2xl border border-slate-200/80 dark:border-slate-800/80 hover:border-[#8B5CF6]/40 dark:hover:border-[#8B5CF6]/50 shadow-xs hover:shadow-xl transition-all duration-300 p-6 ${className}`}
         {...props}
       >
         {children}
